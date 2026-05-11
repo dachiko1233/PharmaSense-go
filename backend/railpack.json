@@ -1,8 +1,7 @@
 {
-  "$schema": "https://schema.railpack.com",
   "provider": "go",
   "packages": {
-    "go": "1.22"
+    "go": "1.23"
   },
   "steps": {
     "install": {
