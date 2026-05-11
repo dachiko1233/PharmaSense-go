@@ -1,0 +1,39 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Go
+backend/bin/
+backend/vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env
+frontend/.env.local
+
+# Build artifacts
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# sqlc generated (optional — you may want to commit these)
+# backend/internal/repository/
+
+# Test cache
+*.test

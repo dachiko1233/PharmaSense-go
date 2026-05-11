@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "go",
+  "steps": {
+    "install": { "commands": ["go mod download"] },
+    "build":   { "commands": ["go build -o bin/api ./cmd/api"] }
+  },
+  "deploy": { "startCommand": "./bin/api" }
+}

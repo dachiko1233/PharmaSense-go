@@ -1,0 +1,12 @@
+DROP TABLE IF EXISTS stripe_events;
+DROP TABLE IF EXISTS notification_log;
+DROP TABLE IF EXISTS alert_actions;
+DROP TABLE IF EXISTS risk_assessments;
+DROP TABLE IF EXISTS sales;
+DROP TABLE IF EXISTS inventory_batches;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS pharmacy_users;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS pharmacies;
+DROP TABLE IF EXISTS chains;
+DROP EXTENSION IF EXISTS "pgcrypto";
