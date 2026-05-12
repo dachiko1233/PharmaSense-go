@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/resend/resend-go/v2"
 )
@@ -15,7 +16,7 @@ type EmailService struct {
 }
 
 func NewEmailService(apiKey, fromEmail string) *EmailService {
-	isMock := apiKey == "" || len(apiKey) > 5 && apiKey[:5] == "mock_"
+	isMock := apiKey == "" || strings.HasPrefix(apiKey, "mock_")
 	if isMock {
 		return &EmailService{fromEmail: fromEmail, isMock: true}
 	}
@@ -75,7 +76,7 @@ func (s *EmailService) SendPasswordReset(ctx context.Context, to, fullName, appU
 	return s.Send(ctx, to, "Reset Your PharmaSense Password", html)
 }
 
-func (s *EmailService) SendDailyDigest(ctx context.Context, to, fullName, pharmacyName string, criticalCount int, estimatedLoss float64) error {
+func (s *EmailService) SendDailyDigest(ctx context.Context, to, fullName, pharmacyName, appURL string, criticalCount int, estimatedLoss float64) error {
 	html := fmt.Sprintf(`
 <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
   <h1 style="color:#059669">Daily Expiry Digest — %s</h1>
@@ -87,7 +88,7 @@ func (s *EmailService) SendDailyDigest(ctx context.Context, to, fullName, pharma
   <p>Log in to PharmaSense to take action on these items before they expire.</p>
   <a href="%s/dashboard" style="display:inline-block;background:#059669;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">View Dashboard</a>
   <p style="color:#6b7280;font-size:14px;margin-top:32px">You're receiving this because you have daily digest notifications enabled.</p>
-</div>`, pharmacyName, fullName, criticalCount, estimatedLoss, s.fromEmail)
+</div>`, pharmacyName, fullName, criticalCount, estimatedLoss, appURL)
 	return s.Send(ctx, to, fmt.Sprintf("⚠️ %d Critical Items — PharmaSense Daily Digest", criticalCount), html)
 }
 

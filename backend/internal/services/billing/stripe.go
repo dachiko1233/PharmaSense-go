@@ -31,7 +31,7 @@ func NewStripeService(secretKey, webhookSecret, pricePro, priceChain, frontendOr
 	}
 }
 
-func (s *StripeService) CreateCheckoutSession(ctx context.Context, customerID, priceID, pharmacyID string) (string, error) {
+func (s *StripeService) CreateCheckoutSession(ctx context.Context, customerID, priceID, pharmacyID, plan string) (string, error) {
 	params := &stripe.CheckoutSessionParams{
 		Customer: stripe.String(customerID),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
@@ -45,6 +45,7 @@ func (s *StripeService) CreateCheckoutSession(ctx context.Context, customerID, p
 		CancelURL:  stripe.String(s.frontendOrigin + "/billing?canceled=true"),
 		Metadata: map[string]string{
 			"pharmacy_id": pharmacyID,
+			"plan":        plan,
 		},
 	}
 

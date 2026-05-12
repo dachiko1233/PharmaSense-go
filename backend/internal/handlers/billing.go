@@ -59,7 +59,7 @@ func (h *BillingHandler) CheckoutSession(c *gin.Context) {
 		}
 	}
 
-	url, err := h.billing.CreateCheckoutSession(c.Request.Context(), customerID, priceID, pharmacyID.String())
+	url, err := h.billing.CreateCheckoutSession(c.Request.Context(), customerID, priceID, pharmacyID.String(), req.Plan)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create checkout session"})
 		return
@@ -182,6 +182,7 @@ func (h *BillingHandler) Webhook(c *gin.Context) {
 			if pharmacyID, ok := sess.Metadata["pharmacy_id"]; ok {
 				customerID := ""
 				subID := ""
+				plan := sess.Metadata["plan"]
 				if sess.Customer != nil {
 					customerID = sess.Customer.ID
 				}
@@ -193,9 +194,10 @@ func (h *BillingHandler) Webhook(c *gin.Context) {
 					  stripe_customer_id = $1,
 					  stripe_subscription_id = $2,
 					  subscription_status = 'active',
+					  plan = COALESCE(NULLIF($3, ''), plan),
 					  updated_at = NOW()
-					WHERE id = $3
-				`, customerID, subID, pharmacyID)
+					WHERE id = $4
+				`, customerID, subID, plan, pharmacyID)
 			}
 		}
 

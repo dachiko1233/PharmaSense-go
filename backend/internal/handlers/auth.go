@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -46,14 +47,15 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		return
 	}
 
-	// Send welcome email (non-blocking)
-	go func() {
-		var verToken string
+	// Send welcome email (non-blocking); use Background so the cancelled request ctx doesn't abort it
+	go func(email, fullName, token string) {
+		_ = h.email.SendWelcome(context.Background(), email, fullName, h.appURL, token)
+	}(user.Email, user.FullName, func() string {
 		if user.EmailVerificationToken != nil {
-			verToken = *user.EmailVerificationToken
+			return *user.EmailVerificationToken
 		}
-		_ = h.email.SendWelcome(c.Request.Context(), user.Email, user.FullName, h.appURL, verToken)
-	}()
+		return ""
+	}())
 
 	c.JSON(http.StatusCreated, gin.H{
 		"token":    token,
@@ -146,9 +148,9 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	}
 
 	if token != "" {
-		go func() {
-			_ = h.email.SendPasswordReset(c.Request.Context(), req.Email, "User", h.appURL, token)
-		}()
+		go func(email, tok string) {
+			_ = h.email.SendPasswordReset(context.Background(), email, "User", h.appURL, tok)
+		}(req.Email, token)
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "if that email exists, a reset link was sent"})
 }

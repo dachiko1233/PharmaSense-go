@@ -169,7 +169,7 @@ func seed(ctx context.Context, pool *pgxpool.Pool) error {
 
 	slog.Info("running risk calculations...")
 	for _, pid := range pharmacyIDs {
-		if err := runRiskEngine(ctx, pool, pid, rng); err != nil {
+		if err := runRiskEngine(ctx, pool, pid); err != nil {
 			slog.Warn("risk engine failed", "pharmacy", pid, "error", err)
 		}
 	}
@@ -361,10 +361,10 @@ func seedPharmacyData(ctx context.Context, pool *pgxpool.Pool, pharmacyID uuid.U
 
 	// Risk distribution: 20% CRITICAL / 25% HIGH / 20% MEDIUM / 35% LOW
 	type BatchSpec struct {
-		daysExpiry  int
-		qty         int
-		avgSales    float64
-		riskLevel   string
+		daysExpiry int
+		qty        int
+		avgSales   float64
+		riskLevel  string
 	}
 
 	batchCount := 0
@@ -377,25 +377,25 @@ func seedPharmacyData(ctx context.Context, pool *pgxpool.Pool, pharmacyID uuid.U
 
 			switch {
 			case riskRoll < 0.20: // CRITICAL
-				spec.daysExpiry = 5 + rng.Intn(25)     // 5-30 days
-				spec.qty = 50 + rng.Intn(150)           // high qty
+				spec.daysExpiry = 5 + rng.Intn(25)       // 5-30 days
+				spec.qty = 50 + rng.Intn(150)            // high qty
 				spec.avgSales = float64(rng.Intn(3) + 1) // low sales
 				spec.riskLevel = domain.RiskLevelCritical
 
 			case riskRoll < 0.45: // HIGH
-				spec.daysExpiry = 31 + rng.Intn(60)    // 31-90 days
+				spec.daysExpiry = 31 + rng.Intn(60) // 31-90 days
 				spec.qty = 100 + rng.Intn(200)
 				spec.avgSales = float64(rng.Intn(2) + 1)
 				spec.riskLevel = domain.RiskLevelHigh
 
 			case riskRoll < 0.65: // MEDIUM
-				spec.daysExpiry = 91 + rng.Intn(90)    // 91-180 days
+				spec.daysExpiry = 91 + rng.Intn(90) // 91-180 days
 				spec.qty = 60 + rng.Intn(100)
 				spec.avgSales = float64(rng.Intn(3) + 1)
 				spec.riskLevel = domain.RiskLevelMedium
 
 			default: // LOW
-				spec.daysExpiry = 181 + rng.Intn(365)  // 181-546 days
+				spec.daysExpiry = 181 + rng.Intn(365) // 181-546 days
 				spec.qty = 20 + rng.Intn(80)
 				spec.avgSales = float64(rng.Intn(5) + 2)
 				spec.riskLevel = domain.RiskLevelLow
@@ -445,8 +445,9 @@ func createSales(ctx context.Context, pool *pgxpool.Pool, pharmacyID, batchID, p
 		for dailyQty < int(avgDaily*2) {
 			if rng.Float64() < avgDaily/float64(int(avgDaily*2)+1) {
 				dailyQty += rng.Intn(3) + 1
+			} else {
+				break
 			}
-			break
 		}
 		if dailyQty == 0 {
 			continue
@@ -471,7 +472,7 @@ func createSales(ctx context.Context, pool *pgxpool.Pool, pharmacyID, batchID, p
 	return nil
 }
 
-func runRiskEngine(ctx context.Context, pool *pgxpool.Pool, pharmacyID uuid.UUID, rng *rand.Rand) error {
+func runRiskEngine(ctx context.Context, pool *pgxpool.Pool, pharmacyID uuid.UUID) error {
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 
 	rows, err := pool.Query(ctx, `
@@ -480,7 +481,7 @@ func runRiskEngine(ctx context.Context, pool *pgxpool.Pool, pharmacyID uuid.UUID
 		         (SELECT SUM(s.quantity)::float / 90.0
 		          FROM sales s
 		          WHERE s.batch_id = ib.id
-		            AND s.sale_date >= $2 - INTERVAL '90 days'),
+		            AND s.sale_date >= $2::date - 90),
 		         0.5
 		       ) as avg_daily_sales
 		FROM inventory_batches ib

@@ -73,20 +73,20 @@ func (h *PharmacyHandler) Get(c *gin.Context) {
 
 	row := h.db.QueryRow(c.Request.Context(), `
 		SELECT id, name, license_number, city, phone, email, plan, language,
-		       subscription_status, subscription_current_period_end, created_at, updated_at
+		       subscription_status, subscription_current_period_end
 		FROM pharmacies WHERE id = $1
 	`, pharmacyID)
 
 	type PharmacyDetail struct {
-		ID                          uuid.UUID  `json:"id"`
-		Name                        string     `json:"name"`
-		LicenseNumber               string     `json:"license_number"`
-		City                        *string    `json:"city"`
-		Phone                       *string    `json:"phone"`
-		Email                       *string    `json:"email"`
-		Plan                        string     `json:"plan"`
-		Language                    string     `json:"language"`
-		SubscriptionStatus          *string    `json:"subscription_status"`
+		ID                           uuid.UUID `json:"id"`
+		Name                         string    `json:"name"`
+		LicenseNumber                string    `json:"license_number"`
+		City                         *string   `json:"city"`
+		Phone                        *string   `json:"phone"`
+		Email                        *string   `json:"email"`
+		Plan                         string    `json:"plan"`
+		Language                     string    `json:"language"`
+		SubscriptionStatus           *string   `json:"subscription_status"`
 		SubscriptionCurrentPeriodEnd *string   `json:"subscription_current_period_end"`
 	}
 	var p PharmacyDetail

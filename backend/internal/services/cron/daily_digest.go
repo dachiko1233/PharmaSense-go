@@ -75,11 +75,14 @@ func (j *DigestJob) Run() {
 		if err := rows.Scan(&userID, &email, &fullName, &pharmacyID, &pharmacyName, &criticalCount, &totalLoss); err != nil {
 			continue
 		}
-		if err := j.email.SendDailyDigest(ctx, email, fullName, pharmacyName, criticalCount, totalLoss); err != nil {
+		if err := j.email.SendDailyDigest(ctx, email, fullName, pharmacyName, j.appURL, criticalCount, totalLoss); err != nil {
 			slog.Error("daily digest: send failed", "email", email, "error", err)
 			continue
 		}
 		sent++
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("daily digest: row iteration error", "error", err)
 	}
 	slog.Info("daily digest complete", "emails_sent", sent)
 }

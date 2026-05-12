@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
-	openapi "github.com/twilio/twilio-go/rest/api/v2010"
 	twilioClient "github.com/twilio/twilio-go"
+	openapi "github.com/twilio/twilio-go/rest/api/v2010"
 )
 
 type SMSService struct {
@@ -16,7 +17,7 @@ type SMSService struct {
 }
 
 func NewSMSService(accountSID, authToken, fromNumber string) *SMSService {
-	isMock := accountSID == "" || len(accountSID) > 5 && accountSID[:5] == "mock_"
+	isMock := accountSID == "" || strings.HasPrefix(accountSID, "mock_")
 	if isMock {
 		return &SMSService{fromNumber: fromNumber, isMock: true}
 	}

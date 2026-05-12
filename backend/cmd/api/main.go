@@ -59,24 +59,26 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Addr:         "0.0.0.0:" + port,
-		Handler:      r,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		Addr:              "0.0.0.0:" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
-
-	// Start server in goroutine
-	go func() {
-		slog.Info("server starting", "port", port, "env", cfg.Env)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("server error", "error", err)
-			os.Exit(1)
-		}
-	}()
 
 	// Graceful shutdown on SIGTERM (Railway sends this)
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start server in goroutine; signal quit on error so defers still run
+	go func() {
+		slog.Info("server starting", "port", port, "env", cfg.Env)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("server error", "error", err)
+			quit <- syscall.SIGTERM
+		}
+	}()
 	<-quit
 
 	slog.Info("shutting down gracefully...")

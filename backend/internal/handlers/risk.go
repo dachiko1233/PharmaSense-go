@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"pharmasense/internal/middleware"
+	"pharmasense/internal/services"
 )
 
 type RiskHandler struct {
@@ -181,5 +182,60 @@ func (h *RiskHandler) Timeline(c *gin.Context) {
 }
 
 func recalculateForPharmacy(ctx context.Context, db *pgxpool.Pool, pharmacyID uuid.UUID) error {
-	return nil // placeholder — full recalc happens in seed
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+
+	rows, err := db.Query(ctx, `
+		SELECT ib.id, ib.expiry_date, ib.current_quantity, ib.purchase_price,
+		       COALESCE(
+		         (SELECT SUM(s.quantity)::float / 90.0
+		          FROM sales s
+		          WHERE s.batch_id = ib.id
+		            AND s.sale_date >= $2::date - 90),
+		         0.5
+		       ) as avg_daily_sales
+		FROM inventory_batches ib
+		WHERE ib.pharmacy_id = $1
+	`, pharmacyID, today)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type batchData struct {
+		id            uuid.UUID
+		expiryDate    time.Time
+		currentQty    int
+		purchasePrice float64
+		avgDailySales float64
+	}
+
+	var batches []batchData
+	for rows.Next() {
+		var b batchData
+		if err := rows.Scan(&b.id, &b.expiryDate, &b.currentQty, &b.purchasePrice, &b.avgDailySales); err != nil {
+			continue
+		}
+		batches = append(batches, b)
+	}
+	rows.Close()
+
+	for _, b := range batches {
+		result := services.CalculateRisk(services.RiskInput{
+			CurrentQuantity: b.currentQty,
+			ExpiryDate:      b.expiryDate,
+			AvgDailySales:   b.avgDailySales,
+			PurchasePrice:   b.purchasePrice,
+			Today:           today,
+		})
+
+		_, _ = db.Exec(ctx, `
+			INSERT INTO risk_assessments
+			  (batch_id, pharmacy_id, risk_level, days_until_expiry, avg_daily_sales,
+			   expected_sales, estimated_surplus, estimated_loss, suggested_discount_percent)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		`, b.id, pharmacyID, result.RiskLevel, result.DaysUntilExpiry, b.avgDailySales,
+			result.ExpectedSales, result.EstimatedSurplus, result.EstimatedLoss, result.SuggestedDiscountPct)
+	}
+
+	return nil
 }
