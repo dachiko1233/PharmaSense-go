@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 
@@ -45,120 +46,114 @@ func main() {
 }
 
 func seed(ctx context.Context, pool *pgxpool.Pool) error {
-	// Wipe existing seeded data
-	tables := []string{
-		"alert_actions", "risk_assessments", "sales", "inventory_batches",
-		"pharmacy_users", "users", "pharmacies", "chains", "products",
-	}
-	for _, t := range tables {
-		if _, err := pool.Exec(ctx, fmt.Sprintf("DELETE FROM %s", t)); err != nil {
-			return fmt.Errorf("wipe %s: %w", t, err)
-		}
+	// Wipe existing seeded data atomically
+	if _, err := pool.Exec(ctx, `
+		TRUNCATE TABLE
+			alert_actions, risk_assessments, sales, inventory_batches,
+			pharmacy_users, users, pharmacies, chains, products
+		RESTART IDENTITY CASCADE
+	`); err != nil {
+		return fmt.Errorf("wipe tables: %w", err)
 	}
 	slog.Info("tables wiped")
 
-	// Create chain
-	var chainID uuid.UUID
-	err := pool.QueryRow(ctx, `
-		INSERT INTO chains (name, owner_email) VALUES ($1, $2) RETURNING id
-	`, "Nicosia Health Group", "chain_admin@pharmasense.cy").Scan(&chainID)
-	if err != nil {
+	// ── Chain ──────────────────────────────────────────────────────────
+	chainID := uuid.New()
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO chains (id, name, owner_email) VALUES ($1, $2, $3)`,
+		chainID, "Nicosia Health Group", "chain_admin@pharmasense.cy",
+	); err != nil {
 		return fmt.Errorf("create chain: %w", err)
 	}
 
-	// Create pharmacies
-	type PharmDef struct {
-		Name    string
-		License string
-		City    string
-		Plan    string
-	}
+	// ── Pharmacies (CopyFrom) ──────────────────────────────────────────
+	type PharmDef struct{ Name, License, City, Plan string }
 	pharmDefs := []PharmDef{
 		{"Nicosia Central Pharmacy", "CY-PH-2024-001", "Nicosia", "pro"},
 		{"Limassol Marina Pharmacy", "CY-PH-2024-002", "Limassol", "free"},
 		{"Paphos Tourist Pharmacy", "CY-PH-2024-003", "Paphos", "chain"},
 	}
-	pharmacyIDs := make([]uuid.UUID, 3)
-	for i, def := range pharmDefs {
-		var id uuid.UUID
-		err := pool.QueryRow(ctx, `
-			INSERT INTO pharmacies (chain_id, name, license_number, city, plan, stripe_customer_id, stripe_subscription_id, subscription_status)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id
-		`, chainID, def.Name, def.License, def.City, def.Plan,
-			fmt.Sprintf("cus_mock_%d", i+1),
-			fmt.Sprintf("sub_mock_%d", i+1),
-			"active",
-		).Scan(&id)
-		if err != nil {
-			return fmt.Errorf("create pharmacy %s: %w", def.Name, err)
-		}
-		pharmacyIDs[i] = id
+	pharmacyIDs := make([]uuid.UUID, len(pharmDefs))
+	for i := range pharmacyIDs {
+		pharmacyIDs[i] = uuid.New()
 	}
-	slog.Info("pharmacies created", "count", 3)
+	if _, err := pool.CopyFrom(ctx,
+		pgx.Identifier{"pharmacies"},
+		[]string{"id", "chain_id", "name", "license_number", "city", "plan",
+			"stripe_customer_id", "stripe_subscription_id", "subscription_status"},
+		pgx.CopyFromSlice(len(pharmDefs), func(i int) ([]any, error) {
+			d := pharmDefs[i]
+			return []any{
+				pharmacyIDs[i], chainID, d.Name, d.License, d.City, d.Plan,
+				fmt.Sprintf("cus_mock_%d", i+1),
+				fmt.Sprintf("sub_mock_%d", i+1),
+				"active",
+			}, nil
+		}),
+	); err != nil {
+		return fmt.Errorf("create pharmacies: %w", err)
+	}
+	slog.Info("pharmacies created", "count", len(pharmDefs))
 
-	// Hash passwords (bcrypt cost 12)
+	// ── Users (CopyFrom) ──────────────────────────────────────────────
 	hash, err := bcrypt.GenerateFromPassword([]byte("Demo1234!"), 12)
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
 	}
 	passwordHash := string(hash)
 
-	// Create users
-	type UserDef struct {
-		Email    string
-		FullName string
-	}
+	type UserDef struct{ Email, FullName string }
 	userDefs := []UserDef{
 		{"chain_admin@pharmasense.cy", "Alexandra Papadopoulos"},
 		{"admin@pharmasense.cy", "Nikos Stavrou"},
 		{"staff@pharmasense.cy", "Maria Christodoulou"},
 	}
-	userIDs := make([]uuid.UUID, 3)
-	for i, def := range userDefs {
-		var id uuid.UUID
-		err := pool.QueryRow(ctx, `
-			INSERT INTO users (default_pharmacy_id, email, password_hash, full_name, email_verified, is_active)
-			VALUES ($1, $2, $3, $4, true, true)
-			RETURNING id
-		`, pharmacyIDs[0], def.Email, passwordHash, def.FullName).Scan(&id)
-		if err != nil {
-			return fmt.Errorf("create user %s: %w", def.Email, err)
-		}
-		userIDs[i] = id
+	userIDs := make([]uuid.UUID, len(userDefs))
+	for i := range userIDs {
+		userIDs[i] = uuid.New()
 	}
-	slog.Info("users created", "count", 3)
+	if _, err := pool.CopyFrom(ctx,
+		pgx.Identifier{"users"},
+		[]string{"id", "default_pharmacy_id", "email", "password_hash", "full_name", "email_verified", "is_active"},
+		pgx.CopyFromSlice(len(userDefs), func(i int) ([]any, error) {
+			d := userDefs[i]
+			return []any{userIDs[i], pharmacyIDs[0], d.Email, passwordHash, d.FullName, true, true}, nil
+		}),
+	); err != nil {
+		return fmt.Errorf("create users: %w", err)
+	}
+	slog.Info("users created", "count", len(userDefs))
 
-	// Link users to pharmacies
-	// chain_admin → all 3 as chain_admin
+	// ── Pharmacy-user links (CopyFrom) ─────────────────────────────────
+	type puRow struct {
+		pharmacyID, userID uuid.UUID
+		role               string
+	}
+	var puRows []puRow
 	for _, pid := range pharmacyIDs {
-		_, err := pool.Exec(ctx, `
-			INSERT INTO pharmacy_users (pharmacy_id, user_id, role) VALUES ($1, $2, 'chain_admin')
-		`, pid, userIDs[0])
-		if err != nil {
-			return fmt.Errorf("link chain_admin: %w", err)
-		}
+		puRows = append(puRows, puRow{pid, userIDs[0], "chain_admin"})
 	}
-	// admin → pharmacy 0 as admin
-	if _, err := pool.Exec(ctx, `
-		INSERT INTO pharmacy_users (pharmacy_id, user_id, role) VALUES ($1, $2, 'admin')
-	`, pharmacyIDs[0], userIDs[1]); err != nil {
-		return fmt.Errorf("link admin: %w", err)
-	}
-	// staff → pharmacy 0 as staff
-	if _, err := pool.Exec(ctx, `
-		INSERT INTO pharmacy_users (pharmacy_id, user_id, role) VALUES ($1, $2, 'staff')
-	`, pharmacyIDs[0], userIDs[2]); err != nil {
-		return fmt.Errorf("link staff: %w", err)
+	puRows = append(puRows, puRow{pharmacyIDs[0], userIDs[1], "admin"})
+	puRows = append(puRows, puRow{pharmacyIDs[0], userIDs[2], "staff"})
+	if _, err := pool.CopyFrom(ctx,
+		pgx.Identifier{"pharmacy_users"},
+		[]string{"pharmacy_id", "user_id", "role"},
+		pgx.CopyFromSlice(len(puRows), func(i int) ([]any, error) {
+			r := puRows[i]
+			return []any{r.pharmacyID, r.userID, r.role}, nil
+		}),
+	); err != nil {
+		return fmt.Errorf("link users: %w", err)
 	}
 
-	// Create products
+	// ── Products (CopyFrom) ────────────────────────────────────────────
 	productIDs, err := createProducts(ctx, pool)
 	if err != nil {
 		return fmt.Errorf("create products: %w", err)
 	}
 	slog.Info("products created", "count", len(productIDs))
 
-	// Create batches and sales for each pharmacy
+	// ── Pharmacy data (batches + sales) ────────────────────────────────
 	rng := rand.New(rand.NewSource(42))
 	for i, pid := range pharmacyIDs {
 		slog.Info("seeding pharmacy", "index", i+1, "pharmacy_id", pid)
@@ -167,6 +162,7 @@ func seed(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 
+	// ── Risk engine ───────────────────────────────────────────────────
 	slog.Info("running risk calculations...")
 	for _, pid := range pharmacyIDs {
 		if err := runRiskEngine(ctx, pool, pid); err != nil {
@@ -176,6 +172,8 @@ func seed(ctx context.Context, pool *pgxpool.Pool) error {
 
 	return nil
 }
+
+// ── Product catalogue ─────────────────────────────────────────────────
 
 type ProductDef struct {
 	Name     string
@@ -187,7 +185,6 @@ type ProductDef struct {
 
 func productCatalog() []ProductDef {
 	return []ProductDef{
-		// Painkillers
 		{"Paracetamol 500mg Tablets", "Παρακεταμόλη 500mg", "Painkillers", "GSK", false},
 		{"Ibuprofen 400mg Capsules", "Ιβουπροφαίνη 400mg", "Painkillers", "Bayer", false},
 		{"Aspirin 100mg Tablets", "Ασπιρίνη 100mg", "Painkillers", "Bayer", false},
@@ -195,8 +192,6 @@ func productCatalog() []ProductDef {
 		{"Naproxen 250mg Tablets", "Ναπροξένη 250mg", "Painkillers", "Pfizer", false},
 		{"Codeine Phosphate 30mg", "Κωδεΐνη Φωσφορική 30mg", "Painkillers", "Sanofi", true},
 		{"Tramadol 50mg Capsules", "Τραμαδόλη 50mg", "Painkillers", "Grünenthal", true},
-
-		// Antibiotics
 		{"Amoxicillin 500mg Capsules", "Αμοξικιλλίνη 500mg", "Antibiotics", "Pfizer", true},
 		{"Azithromycin 250mg Tablets", "Αζιθρομυκίνη 250mg", "Antibiotics", "Pfizer", true},
 		{"Clarithromycin 500mg Tablets", "Κλαριθρομυκίνη 500mg", "Antibiotics", "Abbott", true},
@@ -204,8 +199,6 @@ func productCatalog() []ProductDef {
 		{"Metronidazole 400mg Tablets", "Μετρονιδαζόλη 400mg", "Antibiotics", "Sanofi", true},
 		{"Doxycycline 100mg Capsules", "Δοξυκυκλίνη 100mg", "Antibiotics", "Pfizer", true},
 		{"Penicillin V 500mg Tablets", "Πενικιλλίνη V 500mg", "Antibiotics", "GSK", true},
-
-		// Vitamins & Supplements
 		{"Vitamin C 1000mg Effervescent", "Βιταμίνη C 1000mg Αναβράζον", "Vitamins", "Bayer", false},
 		{"Vitamin D3 2000 IU Drops", "Βιταμίνη D3 2000 IU Σταγόνες", "Vitamins", "Roche", false},
 		{"Vitamin B Complex Tablets", "Βιταμίνη Β Σύμπλεγμα", "Vitamins", "Pfizer", false},
@@ -217,8 +210,6 @@ func productCatalog() []ProductDef {
 		{"Calcium 600mg + D3", "Ασβέστιο 600mg + D3", "Vitamins", "Pfizer", false},
 		{"Multivitamin Daily Tablets", "Πολυβιταμίνες Ημέρας", "Vitamins", "Roche", false},
 		{"Vitamin E 400 IU Capsules", "Βιταμίνη E 400 IU", "Vitamins", "Bayer", false},
-
-		// Cold & Flu
 		{"Fludrex Syrup 150ml", "Φλούντρεξ Σιρόπι 150ml", "Cold/Flu", "Sanofi", false},
 		{"Rhinathiol Expectorant 200ml", "Ρινατιόλη Εκκριτική 200ml", "Cold/Flu", "Sanofi", false},
 		{"Strepsils Throat Lozenges", "Στρέψιλς Παστίλιες Λαιμού", "Cold/Flu", "Reckitt", false},
@@ -226,16 +217,12 @@ func productCatalog() []ProductDef {
 		{"Vicks VapoRub 50g", "Vicks VapoRub 50g", "Cold/Flu", "Procter & Gamble", false},
 		{"Lemsip Max Cold Sachets", "Lemsip Μέγιστη Δόση Σακουλάκια", "Cold/Flu", "Reckitt", false},
 		{"Otrivin Nasal Spray 10ml", "Otrivin Ρινικό Σπρέι 10ml", "Cold/Flu", "Novartis", false},
-
-		// Allergy
 		{"Cetirizine 10mg Tablets", "Σετιριζίνη 10mg", "Allergy", "GSK", false},
 		{"Loratadine 10mg Tablets", "Λοραταδίνη 10mg", "Allergy", "Schering", false},
 		{"Fexofenadine 120mg Tablets", "Φεξοφεναδίνη 120mg", "Allergy", "Sanofi", false},
 		{"Dexamethasone Eye Drops 5ml", "Δεξαμεθαζόνη Οφθαλμικές Σταγόνες", "Allergy", "Pfizer", true},
 		{"Mometasone Nasal Spray", "Μομεταζόνη Ρινικό Σπρέι", "Allergy", "Schering", false},
 		{"Hydrocortisone Cream 1% 30g", "Υδροκορτιζόνη Κρέμα 1%", "Allergy", "Bayer", false},
-
-		// Digestive
 		{"Omeprazole 20mg Capsules", "Ομεπραζόλη 20mg", "Digestive", "AstraZeneca", false},
 		{"Pantoprazole 40mg Tablets", "Παντοπραζόλη 40mg", "Digestive", "Pfizer", true},
 		{"Loperamide 2mg Capsules", "Λοπεραμίδη 2mg", "Digestive", "Janssen", false},
@@ -244,8 +231,6 @@ func productCatalog() []ProductDef {
 		{"Lactulose Solution 300ml", "Λακτουλόζη Διάλυμα 300ml", "Digestive", "Sanofi", false},
 		{"Gaviscon Advance Liquid 300ml", "Gaviscon Advance Υγρό 300ml", "Digestive", "Reckitt", false},
 		{"Buscopan 10mg Tablets", "Buscopan 10mg", "Digestive", "Bayer", false},
-
-		// Cardiovascular
 		{"Atorvastatin 20mg Tablets", "Ατορβαστατίνη 20mg", "Cardiovascular", "Pfizer", true},
 		{"Amlodipine 5mg Tablets", "Αμλοδιπίνη 5mg", "Cardiovascular", "Pfizer", true},
 		{"Ramipril 5mg Tablets", "Ραμιπρίλη 5mg", "Cardiovascular", "Sanofi", true},
@@ -253,8 +238,6 @@ func productCatalog() []ProductDef {
 		{"Clopidogrel 75mg Tablets", "Κλοπιδογρέλη 75mg", "Cardiovascular", "Sanofi", true},
 		{"Warfarin 5mg Tablets", "Βαρφαρίνη 5mg", "Cardiovascular", "Teva", true},
 		{"Furosemide 40mg Tablets", "Φουροσεμίδη 40mg", "Cardiovascular", "Sanofi", true},
-
-		// Diabetes
 		{"Metformin 500mg Tablets", "Μετφορμίνη 500mg", "Diabetes", "Merck", true},
 		{"Metformin 850mg Tablets", "Μετφορμίνη 850mg", "Diabetes", "Merck", true},
 		{"Glibenclamide 5mg Tablets", "Γλιβενκλαμίδη 5mg", "Diabetes", "Sanofi", true},
@@ -262,8 +245,6 @@ func productCatalog() []ProductDef {
 		{"Insulin Glargine 300 Units/ml", "Ινσουλίνη Γλαργκίνη 300U/ml", "Diabetes", "Sanofi", true},
 		{"Glucose Test Strips (50 pack)", "Ταινίες Γλυκόζης (50 τεμ)", "Diabetes", "Roche", false},
 		{"Glucometer Starter Kit", "Starter Kit Γλυκόμετρου", "Diabetes", "Roche", false},
-
-		// Skincare
 		{"Eucerin pH5 Lotion 400ml", "Eucerin pH5 Λοσιόν 400ml", "Skincare", "Beiersdorf", false},
 		{"Bepanthen Cream 30g", "Bepanthen Κρέμα 30g", "Skincare", "Bayer", false},
 		{"Cetaphil Moisturising Cream 250g", "Cetaphil Ενυδατική Κρέμα 250g", "Skincare", "Galderma", false},
@@ -272,8 +253,6 @@ func productCatalog() []ProductDef {
 		{"Clindamycin Phosphate Gel 1%", "Κλινδαμυκίνη Φωσφορική Gel 1%", "Skincare", "Pfizer", true},
 		{"Tretinoin Cream 0.05%", "Τρετινοΐνη Κρέμα 0.05%", "Skincare", "Roche", true},
 		{"Fluconazole 150mg Capsule", "Φλουκοναζόλη 150mg", "Skincare", "Pfizer", true},
-
-		// Baby Care
 		{"Calpol Infant Suspension 100ml", "Calpol Παιδικό Εναιώρημα 100ml", "Baby Care", "Johnson & Johnson", false},
 		{"Nurofen for Children 100ml", "Nurofen Παιδικό 100ml", "Baby Care", "Reckitt", false},
 		{"Infacol Colic Relief 50ml", "Infacol Κολικός 50ml", "Baby Care", "Forest Laboratories", false},
@@ -281,8 +260,6 @@ func productCatalog() []ProductDef {
 		{"Dentinox Teething Gel 10g", "Dentinox Gel Οδοντοφυΐας", "Baby Care", "Dentinox", false},
 		{"Johnsons Baby Lotion 300ml", "Johnsons Λοσιόν Μωρού 300ml", "Baby Care", "Johnson & Johnson", false},
 		{"Pampers Sensitive Wipes 80pk", "Pampers Sensitive Μαντηλάκια", "Baby Care", "Procter & Gamble", false},
-
-		// First Aid
 		{"Elastoplast Assorted Plasters 40pk", "Elastoplast Αυτοκόλλητα 40τεμ", "First Aid", "Beiersdorf", false},
 		{"Savlon Antiseptic Cream 100g", "Savlon Αντισηπτική Κρέμα 100g", "First Aid", "Novartis", false},
 		{"Sterile Gauze Swabs 10x10cm", "Αποστειρωμένες Γάζες 10x10cm", "First Aid", "Hartmann", false},
@@ -290,188 +267,194 @@ func productCatalog() []ProductDef {
 		{"Digital Thermometer", "Ψηφιακό Θερμόμετρο", "First Aid", "Omron", false},
 		{"Hydrogen Peroxide 3% 100ml", "Υπεροξείδιο Υδρογόνου 3%", "First Aid", "Bayer", false},
 		{"Medical Alcohol 70% 100ml", "Ιατρική Αλκοόλη 70%", "First Aid", "Generic", false},
-
-		// Additional products to reach ~150
 		{"Salbutamol Inhaler 100mcg", "Σαλβουταμόλη Εισπνευστήρας", "Respiratory", "GSK", true},
 		{"Beclomethasone Inhaler 250mcg", "Βεκλομεθαζόνη Εισπνευστήρας", "Respiratory", "Chiesi", true},
 		{"Montelukast 10mg Tablets", "Μοντελουκάστ 10mg", "Respiratory", "MSD", true},
 		{"Ipratropium Bromide 0.02% Nebules", "Ιπρατρόπιο Βρωμίδιο 0.02%", "Respiratory", "Boehringer", true},
 		{"N-acetylcysteine 600mg Sachets", "N-ακετυλκυστεΐνη 600mg", "Respiratory", "Zambon", false},
-
 		{"Sertraline 50mg Tablets", "Σερτραλίνη 50mg", "Mental Health", "Pfizer", true},
 		{"Escitalopram 10mg Tablets", "Εσκιταλοπράμη 10mg", "Mental Health", "Lundbeck", true},
 		{"Diazepam 5mg Tablets", "Διαζεπάμη 5mg", "Mental Health", "Roche", true},
 		{"Melatonin 1mg Tablets", "Μελατονίνη 1mg", "Mental Health", "Teva", false},
 		{"Valerian Root Extract 450mg", "Εκχύλισμα Ριζόχορτου 450mg", "Mental Health", "Various", false},
-
 		{"Levothyroxine 50mcg Tablets", "Λεβοθυροξίνη 50mcg", "Thyroid", "Merck", true},
 		{"Levothyroxine 100mcg Tablets", "Λεβοθυροξίνη 100mcg", "Thyroid", "Merck", true},
 		{"Propylthiouracil 50mg Tablets", "Προπυλθειουρακίλη 50mg", "Thyroid", "Teva", true},
-
 		{"Timolol Eye Drops 0.5%", "Τιμολόλη Οφθαλμικές Σταγόνες 0.5%", "Eye Care", "MSD", true},
 		{"Latanoprost 0.005% Eye Drops", "Λαταναπροστ 0.005%", "Eye Care", "Pfizer", true},
 		{"Sodium Hyaluronate Eye Drops", "Υαλουρονικό Νάτριο Οφθαλμικό", "Eye Care", "Thea", false},
 		{"Chloramphenicol Eye Drops 0.5%", "Χλωραμφαινικόλη Οφθαλμικές 0.5%", "Eye Care", "Bausch", true},
-
 		{"Fluoxetine 20mg Capsules", "Φλουοξετίνη 20mg", "Mental Health", "Lilly", true},
 		{"Quetiapine 25mg Tablets", "Κουετιαπίνη 25mg", "Mental Health", "AstraZeneca", true},
 		{"Gabapentin 300mg Capsules", "Γκαμπαπεντίνη 300mg", "Mental Health", "Pfizer", true},
 		{"Pregabalin 75mg Capsules", "Πρεγκαμπαλίνη 75mg", "Mental Health", "Pfizer", true},
-
 		{"Clotrimazole Cream 1% 30g", "Κλοτριμαζόλη Κρέμα 1%", "Antifungal", "Bayer", false},
 		{"Miconazole Gel 2% Oral", "Μικοναζόλη Gel 2% Στοματικό", "Antifungal", "Janssen", false},
 		{"Terbinafine 1% Cream 30g", "Τερμπιναφίνη 1% Κρέμα", "Antifungal", "Novartis", false},
-
 		{"Heparin Sodium Gel 50000 IU", "Ηπαρίνη Νατρίου Gel", "Cardiovascular", "Roche", false},
 		{"Glyceryl Trinitrate Spray 400mcg", "Νιτρογλυκερίνη Σπρέι 400mcg", "Cardiovascular", "Pfizer", true},
-
 		{"Oral Rehydration Salts Sachets", "Άλατα Ενυδάτωσης Σακουλάκια", "Digestive", "Sanofi", false},
 		{"Probiotic Capsules (30 capsules)", "Προβιοτικές Κάψουλες (30τεμ)", "Digestive", "Various", false},
 		{"Senna 7.5mg Tablets", "Σέννα 7.5mg", "Digestive", "Norgine", false},
-
 		{"Aciclovir 5% Cream 2g", "Ακυκλοβίρη 5% Κρέμα 2g", "Antiviral", "GSK", false},
 		{"Valaciclovir 500mg Tablets", "Βαλακυκλοβίρη 500mg", "Antiviral", "GSK", true},
-
 		{"Ketorolac Injection 30mg/ml", "Κετορολάκη Ένεση 30mg/ml", "Painkillers", "Roche", true},
 		{"Morphine Sulfate 10mg/5ml Solution", "Θειική Μορφίνη 10mg/5ml", "Painkillers", "Sanofi", true},
 	}
 }
 
+// createProducts bulk-inserts all products with pre-generated UUIDs.
 func createProducts(ctx context.Context, pool *pgxpool.Pool) ([]uuid.UUID, error) {
 	catalog := productCatalog()
-	ids := make([]uuid.UUID, 0, len(catalog))
-
-	for _, prod := range catalog {
-		var id uuid.UUID
-		err := pool.QueryRow(ctx, `
-			INSERT INTO products (name, name_el, category, manufacturer, requires_prescription)
-			VALUES ($1, $2, $3, $4, $5) RETURNING id
-		`, prod.Name, prod.NameEl, prod.Category, prod.Manuf, prod.RxReq).Scan(&id)
-		if err != nil {
-			return nil, fmt.Errorf("insert product %s: %w", prod.Name, err)
-		}
-		ids = append(ids, id)
+	ids := make([]uuid.UUID, len(catalog))
+	for i := range ids {
+		ids[i] = uuid.New()
 	}
-	return ids, nil
+	_, err := pool.CopyFrom(ctx,
+		pgx.Identifier{"products"},
+		[]string{"id", "name", "name_el", "category", "manufacturer", "requires_prescription"},
+		pgx.CopyFromSlice(len(catalog), func(i int) ([]any, error) {
+			p := catalog[i]
+			return []any{ids[i], p.Name, p.NameEl, p.Category, p.Manuf, p.RxReq}, nil
+		}),
+	)
+	return ids, err
 }
 
+// seedPharmacyData bulk-inserts batches + sales for one pharmacy in two CopyFrom calls.
 func seedPharmacyData(ctx context.Context, pool *pgxpool.Pool, pharmacyID uuid.UUID, productIDs []uuid.UUID, rng *rand.Rand) error {
 	suppliers := []string{"MedSupply Cyprus", "PharmaWholesale Ltd", "EuroMeds"}
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 
-	// Risk distribution: 20% CRITICAL / 25% HIGH / 20% MEDIUM / 35% LOW
-	type BatchSpec struct {
-		daysExpiry int
-		qty        int
-		avgSales   float64
-		riskLevel  string
+	type batchMeta struct {
+		id            uuid.UUID
+		productID     uuid.UUID
+		batchNum      string
+		expiryDate    time.Time
+		qty           int
+		purchasePrice float64
+		sellingPrice  float64
+		supplier      string
+		receivedDate  time.Time
+		avgSales      float64
 	}
 
-	batchCount := 0
+	var batches []batchMeta
 	for _, productID := range productIDs {
-		// 3-4 batches per product per pharmacy
 		numBatches := 3 + rng.Intn(2)
 		for b := 0; b < numBatches; b++ {
 			riskRoll := rng.Float64()
-			var spec BatchSpec
+			var daysExpiry, qty int
+			var avgSales float64
 
 			switch {
-			case riskRoll < 0.20: // CRITICAL
-				spec.daysExpiry = 5 + rng.Intn(25)       // 5-30 days
-				spec.qty = 50 + rng.Intn(150)            // high qty
-				spec.avgSales = float64(rng.Intn(3) + 1) // low sales
-				spec.riskLevel = domain.RiskLevelCritical
-
-			case riskRoll < 0.45: // HIGH
-				spec.daysExpiry = 31 + rng.Intn(60) // 31-90 days
-				spec.qty = 100 + rng.Intn(200)
-				spec.avgSales = float64(rng.Intn(2) + 1)
-				spec.riskLevel = domain.RiskLevelHigh
-
-			case riskRoll < 0.65: // MEDIUM
-				spec.daysExpiry = 91 + rng.Intn(90) // 91-180 days
-				spec.qty = 60 + rng.Intn(100)
-				spec.avgSales = float64(rng.Intn(3) + 1)
-				spec.riskLevel = domain.RiskLevelMedium
-
-			default: // LOW
-				spec.daysExpiry = 181 + rng.Intn(365) // 181-546 days
-				spec.qty = 20 + rng.Intn(80)
-				spec.avgSales = float64(rng.Intn(5) + 2)
-				spec.riskLevel = domain.RiskLevelLow
+			case riskRoll < 0.20:
+				daysExpiry = 5 + rng.Intn(25)
+				qty = 50 + rng.Intn(150)
+				avgSales = float64(rng.Intn(3) + 1)
+			case riskRoll < 0.45:
+				daysExpiry = 31 + rng.Intn(60)
+				qty = 100 + rng.Intn(200)
+				avgSales = float64(rng.Intn(2) + 1)
+			case riskRoll < 0.65:
+				daysExpiry = 91 + rng.Intn(90)
+				qty = 60 + rng.Intn(100)
+				avgSales = float64(rng.Intn(3) + 1)
+			default:
+				daysExpiry = 181 + rng.Intn(365)
+				qty = 20 + rng.Intn(80)
+				avgSales = float64(rng.Intn(5) + 2)
 			}
 
-			expiryDate := today.AddDate(0, 0, spec.daysExpiry)
-			receivedDate := today.AddDate(0, 0, -(30 + rng.Intn(60)))
-			purchasePrice := 0.50 + rng.Float64()*49.50
-			sellingPrice := purchasePrice * (1.2 + rng.Float64()*0.5)
-			batchNum := fmt.Sprintf("BN-%d-%04d", today.Year(), rng.Intn(9999)+1)
-			supplier := suppliers[rng.Intn(len(suppliers))]
-
-			var batchID uuid.UUID
-			err := pool.QueryRow(ctx, `
-				INSERT INTO inventory_batches
-				  (pharmacy_id, product_id, batch_number, expiry_date, initial_quantity, current_quantity,
-				   purchase_price, selling_price, supplier, received_date)
-				VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8,$9)
-				RETURNING id
-			`, pharmacyID, productID, batchNum, expiryDate, spec.qty,
-				roundPrice(purchasePrice), roundPrice(sellingPrice), supplier, receivedDate,
-			).Scan(&batchID)
-			if err != nil {
-				continue
-			}
-			batchCount++
-
-			// Create sales for last 90 days
-			if err := createSales(ctx, pool, pharmacyID, batchID, productID, spec.avgSales, spec.qty, today, rng); err != nil {
-				continue
-			}
+			batches = append(batches, batchMeta{
+				id:            uuid.New(),
+				productID:     productID,
+				batchNum:      fmt.Sprintf("BN-%d-%04d", today.Year(), rng.Intn(9999)+1),
+				expiryDate:    today.AddDate(0, 0, daysExpiry),
+				qty:           qty,
+				purchasePrice: roundPrice(0.50 + rng.Float64()*49.50),
+				sellingPrice:  roundPrice((0.50 + rng.Float64()*49.50) * (1.2 + rng.Float64()*0.5)),
+				supplier:      suppliers[rng.Intn(len(suppliers))],
+				receivedDate:  today.AddDate(0, 0, -(30 + rng.Intn(60))),
+				avgSales:      avgSales,
+			})
 		}
 	}
 
-	slog.Info("batches seeded", "pharmacy_id", pharmacyID, "count", batchCount)
-	return nil
-}
+	// One CopyFrom for all batches
+	if _, err := pool.CopyFrom(ctx,
+		pgx.Identifier{"inventory_batches"},
+		[]string{"id", "pharmacy_id", "product_id", "batch_number", "expiry_date",
+			"initial_quantity", "current_quantity", "purchase_price", "selling_price",
+			"supplier", "received_date"},
+		pgx.CopyFromSlice(len(batches), func(i int) ([]any, error) {
+			b := batches[i]
+			return []any{
+				b.id, pharmacyID, b.productID, b.batchNum, b.expiryDate,
+				b.qty, b.qty, b.purchasePrice, b.sellingPrice, b.supplier, b.receivedDate,
+			}, nil
+		}),
+	); err != nil {
+		return fmt.Errorf("copy batches: %w", err)
+	}
 
-func createSales(ctx context.Context, pool *pgxpool.Pool, pharmacyID, batchID, productID uuid.UUID,
-	avgDaily float64, maxQty int, today time.Time, rng *rand.Rand) error {
-
-	for dayOffset := 90; dayOffset >= 1; dayOffset-- {
-		saleDate := today.AddDate(0, 0, -dayOffset)
-
-		// Poisson-like random daily sales
-		dailyQty := 0
-		for dailyQty < int(avgDaily*2) {
-			if rng.Float64() < avgDaily/float64(int(avgDaily*2)+1) {
-				dailyQty += rng.Intn(3) + 1
-			} else {
-				break
+	// Generate all sales in memory, then one CopyFrom for the entire pharmacy
+	type saleRow struct {
+		pharmacyID uuid.UUID
+		batchID    uuid.UUID
+		productID  uuid.UUID
+		qty        int
+		unit       float64
+		total      float64
+		date       time.Time
+	}
+	var allSales []saleRow
+	for _, b := range batches {
+		for dayOffset := 90; dayOffset >= 1; dayOffset-- {
+			saleDate := today.AddDate(0, 0, -dayOffset)
+			dailyQty := 0
+			for dailyQty < int(b.avgSales*2) {
+				if rng.Float64() < b.avgSales/float64(int(b.avgSales*2)+1) {
+					dailyQty += rng.Intn(3) + 1
+				} else {
+					break
+				}
 			}
-		}
-		if dailyQty == 0 {
-			continue
-		}
-		if dailyQty > maxQty/10 {
-			dailyQty = maxQty / 10
-		}
-		if dailyQty < 1 {
-			continue
-		}
-
-		unitPrice := 1.0 + rng.Float64()*50.0
-		_, err := pool.Exec(ctx, `
-			INSERT INTO sales (pharmacy_id, batch_id, product_id, quantity, unit_price, total_amount, sale_date)
-			VALUES ($1,$2,$3,$4,$5,$6,$7)
-		`, pharmacyID, batchID, productID, dailyQty, roundPrice(unitPrice),
-			roundPrice(float64(dailyQty)*unitPrice), saleDate)
-		if err != nil {
-			return err
+			if dailyQty == 0 {
+				continue
+			}
+			if b.qty/10 > 0 && dailyQty > b.qty/10 {
+				dailyQty = b.qty / 10
+			}
+			if dailyQty < 1 {
+				continue
+			}
+			unitPrice := roundPrice(1.0 + rng.Float64()*50.0)
+			allSales = append(allSales, saleRow{
+				pharmacyID, b.id, b.productID,
+				dailyQty, unitPrice, roundPrice(float64(dailyQty) * unitPrice), saleDate,
+			})
 		}
 	}
+
+	if len(allSales) > 0 {
+		if _, err := pool.CopyFrom(ctx,
+			pgx.Identifier{"sales"},
+			[]string{"pharmacy_id", "batch_id", "product_id", "quantity", "unit_price", "total_amount", "sale_date"},
+			pgx.CopyFromSlice(len(allSales), func(i int) ([]any, error) {
+				r := allSales[i]
+				return []any{r.pharmacyID, r.batchID, r.productID, r.qty, r.unit, r.total, r.date}, nil
+			}),
+		); err != nil {
+			return fmt.Errorf("copy sales: %w", err)
+		}
+	}
+
+	slog.Info("batches seeded", "pharmacy_id", pharmacyID, "count", len(batches), "sales", len(allSales))
 	return nil
 }
 
+// runRiskEngine calculates risk for all batches and bulk-inserts with one CopyFrom.
 func runRiskEngine(ctx context.Context, pool *pgxpool.Pool, pharmacyID uuid.UUID) error {
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 
@@ -492,53 +475,77 @@ func runRiskEngine(ctx context.Context, pool *pgxpool.Pool, pharmacyID uuid.UUID
 	}
 	defer rows.Close()
 
-	type BatchData struct {
-		ID            uuid.UUID
-		ExpiryDate    time.Time
-		CurrentQty    int
-		PurchasePrice float64
-		AvgDailySales float64
+	type batchRow struct {
+		id            uuid.UUID
+		expiryDate    time.Time
+		currentQty    int
+		purchasePrice float64
+		avgDailySales float64
 	}
-
-	var batches []BatchData
+	var batchData []batchRow
 	for rows.Next() {
-		var bd BatchData
-		if err := rows.Scan(&bd.ID, &bd.ExpiryDate, &bd.CurrentQty, &bd.PurchasePrice, &bd.AvgDailySales); err != nil {
+		var b batchRow
+		if err := rows.Scan(&b.id, &b.expiryDate, &b.currentQty, &b.purchasePrice, &b.avgDailySales); err != nil {
 			continue
 		}
-		batches = append(batches, bd)
+		batchData = append(batchData, b)
 	}
 	rows.Close()
 
-	for _, bd := range batches {
+	type riskRow struct {
+		batchID    uuid.UUID
+		riskLevel  string
+		daysExpiry int
+		avgSales   float64
+		expected   int
+		surplus    int
+		loss       float64
+		discount   int
+	}
+	risks := make([]riskRow, 0, len(batchData))
+	for _, b := range batchData {
 		result := services.CalculateRisk(services.RiskInput{
-			CurrentQuantity: bd.CurrentQty,
-			ExpiryDate:      bd.ExpiryDate,
-			AvgDailySales:   bd.AvgDailySales,
-			PurchasePrice:   bd.PurchasePrice,
+			CurrentQuantity: b.currentQty,
+			ExpiryDate:      b.expiryDate,
+			AvgDailySales:   b.avgDailySales,
+			PurchasePrice:   b.purchasePrice,
 			Today:           today,
 		})
-
-		expectedSales := result.ExpectedSales
-		surplus := result.EstimatedSurplus
-		loss := result.EstimatedLoss
-		disc := result.SuggestedDiscountPct
-		avgSales := bd.AvgDailySales
-
-		_, err := pool.Exec(ctx, `
-			INSERT INTO risk_assessments
-			  (batch_id, pharmacy_id, risk_level, days_until_expiry, avg_daily_sales,
-			   expected_sales, estimated_surplus, estimated_loss, suggested_discount_percent)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-		`, bd.ID, pharmacyID, result.RiskLevel, result.DaysUntilExpiry, avgSales,
-			expectedSales, surplus, loss, disc)
-		if err != nil {
-			slog.Warn("risk insert failed", "batch_id", bd.ID, "error", err)
-		}
+		risks = append(risks, riskRow{
+			batchID:    b.id,
+			riskLevel:  result.RiskLevel,
+			daysExpiry: result.DaysUntilExpiry,
+			avgSales:   b.avgDailySales,
+			expected:   result.ExpectedSales,
+			surplus:    result.EstimatedSurplus,
+			loss:       result.EstimatedLoss,
+			discount:   result.SuggestedDiscountPct,
+		})
 	}
 
+	if len(risks) == 0 {
+		return nil
+	}
+
+	_, err = pool.CopyFrom(ctx,
+		pgx.Identifier{"risk_assessments"},
+		[]string{"batch_id", "pharmacy_id", "risk_level", "days_until_expiry", "avg_daily_sales",
+			"expected_sales", "estimated_surplus", "estimated_loss", "suggested_discount_percent"},
+		pgx.CopyFromSlice(len(risks), func(i int) ([]any, error) {
+			r := risks[i]
+			return []any{r.batchID, pharmacyID, r.riskLevel, r.daysExpiry, r.avgSales,
+				r.expected, r.surplus, r.loss, r.discount}, nil
+		}),
+	)
+	if err != nil {
+		return fmt.Errorf("copy risks: %w", err)
+	}
+	slog.Info("risk calculated", "pharmacy_id", pharmacyID, "count", len(risks))
 	return nil
 }
+
+// ── unused domain import guard ────────────────────────────────────────
+var _ = domain.RiskLevelCritical
 
 func roundPrice(v float64) float64 {
 	return float64(int(v*100)) / 100
