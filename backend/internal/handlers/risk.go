@@ -134,11 +134,16 @@ func (h *RiskHandler) Assessments(c *gin.Context) {
 
 func (h *RiskHandler) Recalculate(c *gin.Context) {
 	pharmacyID := middleware.GetPharmacyID(c)
-	if err := recalculateForPharmacy(c.Request.Context(), h.db, pharmacyID); err != nil {
+	start := time.Now()
+	n, err := recalculateForPharmacy(c.Request.Context(), h.db, pharmacyID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "recalculation failed"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "risk recalculated"})
+	c.JSON(http.StatusOK, gin.H{
+		"recalculated": n,
+		"duration_ms":  time.Since(start).Milliseconds(),
+	})
 }
 
 func (h *RiskHandler) Timeline(c *gin.Context) {
@@ -181,7 +186,7 @@ func (h *RiskHandler) Timeline(c *gin.Context) {
 	c.JSON(http.StatusOK, points)
 }
 
-func recalculateForPharmacy(ctx context.Context, db *pgxpool.Pool, pharmacyID uuid.UUID) error {
+func recalculateForPharmacy(ctx context.Context, db *pgxpool.Pool, pharmacyID uuid.UUID) (int, error) {
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 
 	rows, err := db.Query(ctx, `
@@ -197,7 +202,7 @@ func recalculateForPharmacy(ctx context.Context, db *pgxpool.Pool, pharmacyID uu
 		WHERE ib.pharmacy_id = $1
 	`, pharmacyID, today)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer rows.Close()
 
@@ -219,6 +224,7 @@ func recalculateForPharmacy(ctx context.Context, db *pgxpool.Pool, pharmacyID uu
 	}
 	rows.Close()
 
+	count := 0
 	for _, b := range batches {
 		result := services.CalculateRisk(services.RiskInput{
 			CurrentQuantity: b.currentQty,
@@ -228,14 +234,16 @@ func recalculateForPharmacy(ctx context.Context, db *pgxpool.Pool, pharmacyID uu
 			Today:           today,
 		})
 
-		_, _ = db.Exec(ctx, `
+		if _, err := db.Exec(ctx, `
 			INSERT INTO risk_assessments
 			  (batch_id, pharmacy_id, risk_level, days_until_expiry, avg_daily_sales,
 			   expected_sales, estimated_surplus, estimated_loss, suggested_discount_percent)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		`, b.id, pharmacyID, result.RiskLevel, result.DaysUntilExpiry, b.avgDailySales,
-			result.ExpectedSales, result.EstimatedSurplus, result.EstimatedLoss, result.SuggestedDiscountPct)
+			result.ExpectedSales, result.EstimatedSurplus, result.EstimatedLoss, result.SuggestedDiscountPct); err == nil {
+			count++
+		}
 	}
 
-	return nil
+	return count, nil
 }
