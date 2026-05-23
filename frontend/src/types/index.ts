@@ -44,7 +44,7 @@ export interface InventoryBatch {
   suggested_discount_percent?: number;
 }
 
-export type RiskLevel = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+export type RiskLevel = "EXPIRED" | "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 
 export interface RiskAssessment {
   id: string;
@@ -66,6 +66,7 @@ export interface RiskAssessment {
 }
 
 export interface DashboardStats {
+  expired_count: number;
   critical_count: number;
   high_count: number;
   medium_count: number;

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -24,7 +25,12 @@ func NewRiskHandler(db *pgxpool.Pool) *RiskHandler {
 func (h *RiskHandler) Dashboard(c *gin.Context) {
 	pharmacyID := middleware.GetPharmacyID(c)
 
+	if _, err := recalculateForPharmacy(c.Request.Context(), h.db, pharmacyID); err != nil {
+		slog.Warn("risk recalc failed, returning cached data", "error", err)
+	}
+
 	var stats struct {
+		ExpiredCount        int     `json:"expired_count"`
 		CriticalCount       int     `json:"critical_count"`
 		HighCount           int     `json:"high_count"`
 		MediumCount         int     `json:"medium_count"`
@@ -37,11 +43,12 @@ func (h *RiskHandler) Dashboard(c *gin.Context) {
 
 	err := h.db.QueryRow(c.Request.Context(), `
 		SELECT
+		  COUNT(*) FILTER (WHERE ra.risk_level = 'EXPIRED') as expired_count,
 		  COUNT(*) FILTER (WHERE ra.risk_level = 'CRITICAL') as critical_count,
 		  COUNT(*) FILTER (WHERE ra.risk_level = 'HIGH') as high_count,
 		  COUNT(*) FILTER (WHERE ra.risk_level = 'MEDIUM') as medium_count,
 		  COUNT(*) FILTER (WHERE ra.risk_level = 'LOW') as low_count,
-		  COALESCE(SUM(ra.estimated_loss) FILTER (WHERE ra.risk_level IN ('CRITICAL','HIGH')), 0) as estimated_loss,
+		  COALESCE(SUM(ra.estimated_loss) FILTER (WHERE ra.risk_level IN ('EXPIRED','CRITICAL','HIGH')), 0) as estimated_loss,
 		  COALESCE(SUM(ra.estimated_loss * 0.6) FILTER (WHERE ra.risk_level IN ('CRITICAL','HIGH')), 0) as potential_savings,
 		  COALESCE(SUM(ib.current_quantity * ib.purchase_price), 0) as total_inventory_value,
 		  COUNT(DISTINCT ib.id) as total_batches
@@ -55,7 +62,7 @@ func (h *RiskHandler) Dashboard(c *gin.Context) {
 		) ra ON true
 		WHERE ib.pharmacy_id = $1 AND ib.current_quantity > 0
 	`, pharmacyID).Scan(
-		&stats.CriticalCount, &stats.HighCount, &stats.MediumCount, &stats.LowCount,
+		&stats.ExpiredCount, &stats.CriticalCount, &stats.HighCount, &stats.MediumCount, &stats.LowCount,
 		&stats.EstimatedLoss, &stats.PotentialSavings, &stats.TotalInventoryValue, &stats.TotalBatches,
 	)
 	if err != nil {
@@ -67,6 +74,11 @@ func (h *RiskHandler) Dashboard(c *gin.Context) {
 
 func (h *RiskHandler) Assessments(c *gin.Context) {
 	pharmacyID := middleware.GetPharmacyID(c)
+
+	if _, err := recalculateForPharmacy(c.Request.Context(), h.db, pharmacyID); err != nil {
+		slog.Warn("risk recalc failed, returning cached data", "error", err)
+	}
+
 	riskLevel := c.Query("risk_level")
 
 	query := `
@@ -85,7 +97,7 @@ func (h *RiskHandler) Assessments(c *gin.Context) {
 		query += " AND ra.risk_level = $2"
 		args = append(args, riskLevel)
 	}
-	query += " ORDER BY ra.risk_level, ra.days_until_expiry ASC LIMIT 200"
+	query += " ORDER BY CASE ra.risk_level WHEN 'EXPIRED' THEN 0 WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END, ra.days_until_expiry ASC LIMIT 200"
 
 	rows, err := h.db.Query(c.Request.Context(), query, args...)
 	if err != nil {

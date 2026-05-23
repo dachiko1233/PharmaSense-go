@@ -23,6 +23,8 @@ export function formatDate(date: string | Date): string {
 
 export function riskBadgeClass(riskLevel: string): string {
   switch (riskLevel) {
+    case "EXPIRED":
+      return "bg-red-700 text-white";
     case "CRITICAL":
       return "bg-red-100 text-red-700";
     case "HIGH":

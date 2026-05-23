@@ -348,19 +348,28 @@ func seedPharmacyData(ctx context.Context, pool *pgxpool.Pool, pharmacyID uuid.U
 			var avgSales float64
 
 			switch {
+			case riskRoll < 0.05:
+				// EXPIRED: already past expiry date (1-14 days ago)
+				daysExpiry = -(1 + rng.Intn(14))
+				qty = 10 + rng.Intn(50)
+				avgSales = float64(rng.Intn(3) + 1)
 			case riskRoll < 0.20:
+				// CRITICAL: expires within 30 days
 				daysExpiry = 5 + rng.Intn(25)
 				qty = 50 + rng.Intn(150)
 				avgSales = float64(rng.Intn(3) + 1)
 			case riskRoll < 0.45:
+				// HIGH: expires 31-90 days
 				daysExpiry = 31 + rng.Intn(60)
 				qty = 100 + rng.Intn(200)
 				avgSales = float64(rng.Intn(2) + 1)
 			case riskRoll < 0.65:
+				// MEDIUM: expires 91-180 days
 				daysExpiry = 91 + rng.Intn(90)
 				qty = 60 + rng.Intn(100)
 				avgSales = float64(rng.Intn(3) + 1)
 			default:
+				// LOW: expires 181+ days
 				daysExpiry = 181 + rng.Intn(365)
 				qty = 20 + rng.Intn(80)
 				avgSales = float64(rng.Intn(5) + 2)

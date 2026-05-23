@@ -147,6 +147,7 @@ type NotificationLog struct {
 
 // RiskLevel constants
 const (
+	RiskLevelExpired  = "EXPIRED"
 	RiskLevelCritical = "CRITICAL"
 	RiskLevelHigh     = "HIGH"
 	RiskLevelMedium   = "MEDIUM"

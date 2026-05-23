@@ -13,6 +13,7 @@
   "dashboard": {
     "title": "Dashboard",
     "subtitle": "Expiry monitoring overview",
+    "expiredItems": "Expired Items",
     "criticalItems": "Critical Items",
     "estimatedLoss": "Estimated Loss",
     "potentialSavings": "Potential Savings",
@@ -65,6 +66,7 @@
     "title": "Alerts",
     "subtitle": "Take action on at-risk products",
     "all": "All",
+    "expired": "Expired",
     "critical": "Critical",
     "high": "High",
     "medium": "Medium",
@@ -72,9 +74,11 @@
     "applyDiscount": "Apply Discount",
     "transfer": "Transfer",
     "return": "Return to Supplier",
+    "dispose": "Mark as Disposed",
     "dismiss": "Dismiss",
     "actionRecorded": "Action recorded",
-    "noAlerts": "No alerts for this risk level"
+    "noAlerts": "No alerts for this risk level",
+    "removeFromShelfWarning": "REMOVE FROM SHELF — Cannot be sold. Return to supplier or discard per regulations."
   },
   "billing": {
     "title": "Billing & Subscription",
@@ -147,10 +151,15 @@
     "items": "items"
   },
   "risk": {
+    "EXPIRED": "Expired",
     "CRITICAL": "Critical",
     "HIGH": "High",
     "MEDIUM": "Medium",
-    "LOW": "Low"
+    "LOW": "Low",
+    "expiresInDays": "Expires in {days} days",
+    "expiredDaysAgo": "Expired {days} days ago",
+    "expiresToday": "Expires TODAY",
+    "removeFromShelf": "Remove from shelf"
   },
   "plan": {
     "free": "Free",

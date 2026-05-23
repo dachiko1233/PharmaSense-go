@@ -3,12 +3,31 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
+import { differenceInDays, isToday } from "date-fns";
 import { apiFetch } from "@/lib/api/client";
 import { InventoryBatch } from "@/types";
 import { formatCurrency, formatDate, riskBadgeClass, cn } from "@/lib/utils";
 import { Search, Filter, Download } from "lucide-react";
 
-const RISK_FILTERS = ["", "CRITICAL", "HIGH", "MEDIUM", "LOW"];
+const RISK_FILTERS = ["", "EXPIRED", "CRITICAL", "HIGH", "MEDIUM", "LOW"];
+
+function expiryLabel(expiryDateStr: string, daysUntilExpiry?: number): { label: string; className: string } {
+  const days = daysUntilExpiry ?? differenceInDays(new Date(expiryDateStr), new Date());
+
+  if (days < 0) {
+    return {
+      label: `Expired ${Math.abs(days)} days ago`,
+      className: "text-xs font-semibold text-red-700",
+    };
+  }
+  if (isToday(new Date(expiryDateStr))) {
+    return { label: "Expires TODAY", className: "text-xs font-bold text-red-600" };
+  }
+  if (days <= 30) {
+    return { label: `Expires in ${days} days`, className: "text-xs text-red-500" };
+  }
+  return { label: `Expires in ${days} days`, className: "text-xs text-slate-400" };
+}
 
 export default function InventoryPage() {
   const t = useTranslations("inventory");
@@ -80,8 +99,8 @@ export default function InventoryPage() {
             className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-slate-400" />
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter className="w-4 h-4 text-slate-400 flex-shrink-0" />
           {RISK_FILTERS.map((level) => (
             <button
               key={level || "all"}
@@ -132,35 +151,44 @@ export default function InventoryPage() {
                   <td colSpan={7} className="py-12 text-center text-slate-500">{t("noInventory")}</td>
                 </tr>
               ) : (
-                batches.map((batch) => (
-                  <tr key={batch.id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-slate-900">{batch.product_name}</div>
-                      <div className="text-xs text-slate-400">{batch.category ?? "—"}</div>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600 font-mono text-xs">{batch.batch_number ?? "—"}</td>
-                    <td className="py-3 px-4">
-                      <div className="text-slate-900">{formatDate(batch.expiry_date)}</div>
-                      {batch.days_until_expiry != null && (
-                        <div className={cn("text-xs", batch.days_until_expiry <= 30 ? "text-red-500" : "text-slate-400")}>
-                          {batch.days_until_expiry}d left
-                        </div>
+                batches.map((batch) => {
+                  const isExpired = batch.risk_level === "EXPIRED" || (batch.days_until_expiry != null && batch.days_until_expiry < 0);
+                  const expiry = expiryLabel(batch.expiry_date, batch.days_until_expiry ?? undefined);
+
+                  return (
+                    <tr
+                      key={batch.id}
+                      className={cn(
+                        "border-b border-slate-100",
+                        isExpired
+                          ? "bg-red-50 hover:bg-red-100"
+                          : "hover:bg-slate-50"
                       )}
-                    </td>
-                    <td className="py-3 px-4 text-right font-medium text-slate-900">{batch.current_quantity}</td>
-                    <td className="py-3 px-4 text-right text-slate-600">{formatCurrency(batch.purchase_price)}</td>
-                    <td className="py-3 px-4">
-                      {batch.risk_level ? (
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${riskBadgeClass(batch.risk_level)}`}>
-                          {tRisk(batch.risk_level as any)}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 text-xs">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-slate-500 text-xs">{batch.supplier ?? "—"}</td>
-                  </tr>
-                ))
+                    >
+                      <td className="py-3 px-4">
+                        <div className="font-medium text-slate-900">{batch.product_name}</div>
+                        <div className="text-xs text-slate-400">{batch.category ?? "—"}</div>
+                      </td>
+                      <td className="py-3 px-4 text-slate-600 font-mono text-xs">{batch.batch_number ?? "—"}</td>
+                      <td className="py-3 px-4">
+                        <div className="text-slate-900">{formatDate(batch.expiry_date)}</div>
+                        <div className={expiry.className}>{expiry.label}</div>
+                      </td>
+                      <td className="py-3 px-4 text-right font-medium text-slate-900">{batch.current_quantity}</td>
+                      <td className="py-3 px-4 text-right text-slate-600">{formatCurrency(batch.purchase_price)}</td>
+                      <td className="py-3 px-4">
+                        {batch.risk_level ? (
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${riskBadgeClass(batch.risk_level)}`}>
+                            {tRisk(batch.risk_level as any)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-slate-500 text-xs">{batch.supplier ?? "—"}</td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

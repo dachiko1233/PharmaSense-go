@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -20,24 +22,36 @@ func NewAlertHandler(db *pgxpool.Pool) *AlertHandler {
 
 func (h *AlertHandler) List(c *gin.Context) {
 	pharmacyID := middleware.GetPharmacyID(c)
+
+	if _, err := recalculateForPharmacy(c.Request.Context(), h.db, pharmacyID); err != nil {
+		slog.Warn("risk recalc failed, returning cached data", "error", err)
+	}
+
 	riskLevel := c.Query("risk_level")
 
-	query := `
-		SELECT ra.id, ra.batch_id, ra.risk_level, ra.days_until_expiry,
+	baseQuery := `
+		SELECT ra.id, ib.id as batch_id, ra.risk_level, ra.days_until_expiry,
 		       ra.estimated_loss, ra.suggested_discount_percent,
 		       p.name as product_name, p.category,
 		       ib.batch_number, ib.expiry_date, ib.current_quantity, ib.purchase_price
-		FROM risk_assessments ra
-		JOIN inventory_batches ib ON ib.id = ra.batch_id
+		FROM inventory_batches ib
 		JOIN products p ON p.id = ib.product_id
-		WHERE ra.pharmacy_id = $1 AND ib.current_quantity > 0
+		LEFT JOIN LATERAL (
+			SELECT id, risk_level, days_until_expiry, estimated_loss, suggested_discount_percent
+			FROM risk_assessments
+			WHERE batch_id = ib.id
+			ORDER BY calculated_at DESC
+			LIMIT 1
+		) ra ON true
+		WHERE ib.pharmacy_id = $1 AND ib.current_quantity > 0 AND ra.risk_level IS NOT NULL
 	`
 	args := []interface{}{pharmacyID}
+	query := baseQuery
 	if riskLevel != "" && riskLevel != "ALL" {
 		query += " AND ra.risk_level = $2"
 		args = append(args, riskLevel)
 	}
-	query += " ORDER BY CASE ra.risk_level WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END, ra.days_until_expiry ASC LIMIT 200"
+	query += " ORDER BY CASE ra.risk_level WHEN 'EXPIRED' THEN 0 WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END, ra.days_until_expiry ASC LIMIT 200"
 
 	rows, err := h.db.Query(c.Request.Context(), query, args...)
 	if err != nil {
@@ -56,7 +70,7 @@ func (h *AlertHandler) List(c *gin.Context) {
 		ProductName     string    `json:"product_name"`
 		Category        *string   `json:"category"`
 		BatchNumber     *string   `json:"batch_number"`
-		ExpiryDate      string    `json:"expiry_date"`
+		ExpiryDate      time.Time `json:"expiry_date"`
 		CurrentQty      int       `json:"current_quantity"`
 		PurchasePrice   float64   `json:"purchase_price"`
 	}

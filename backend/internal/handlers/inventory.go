@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/csv"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,6 +26,11 @@ func NewInventoryHandler(db *pgxpool.Pool) *InventoryHandler {
 
 func (h *InventoryHandler) List(c *gin.Context) {
 	pharmacyID := middleware.GetPharmacyID(c)
+
+	if _, err := recalculateForPharmacy(c.Request.Context(), h.db, pharmacyID); err != nil {
+		slog.Warn("risk recalc failed, returning cached data", "error", err)
+	}
+
 	riskFilter := c.Query("risk_level")
 	search := c.Query("search")
 	limit := 100

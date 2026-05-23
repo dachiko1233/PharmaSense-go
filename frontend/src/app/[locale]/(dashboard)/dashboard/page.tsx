@@ -9,26 +9,27 @@ import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
-import { AlertTriangle, TrendingDown, TrendingUp, Package } from "lucide-react";
+import { AlertTriangle, TrendingDown, TrendingUp, Package, ShieldAlert } from "lucide-react";
 import { format } from "date-fns";
 
-function KpiCard({ title, value, sub, icon: Icon, iconClass }: {
+function KpiCard({ title, value, sub, icon: Icon, iconClass, cardClass }: {
   title: string;
   value: string;
   sub?: string;
   icon: any;
   iconClass: string;
+  cardClass?: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-6">
+    <div className={`rounded-xl border shadow-sm p-6 ${cardClass ?? "border-slate-200 bg-white"}`}>
       <div className="flex items-center justify-between mb-4">
-        <span className="text-sm font-medium text-slate-500">{title}</span>
+        <span className={`text-sm font-medium ${cardClass ? "text-red-200" : "text-slate-500"}`}>{title}</span>
         <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${iconClass}`}>
           <Icon className="w-5 h-5" />
         </div>
       </div>
-      <div className="text-2xl font-bold text-slate-900">{value}</div>
-      {sub && <div className="text-sm text-slate-500 mt-1">{sub}</div>}
+      <div className={`text-2xl font-bold ${cardClass ? "text-white" : "text-slate-900"}`}>{value}</div>
+      {sub && <div className={`text-sm mt-1 ${cardClass ? "text-red-200" : "text-slate-500"}`}>{sub}</div>}
     </div>
   );
 }
@@ -66,8 +67,8 @@ export default function DashboardPage() {
   if (statsLoading) {
     return (
       <div className="p-6 lg:p-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {[...Array(4)].map((_, i) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+          {[...Array(5)].map((_, i) => (
             <div key={i} className="rounded-xl border border-slate-200 bg-white p-6 animate-pulse">
               <div className="h-4 bg-slate-200 rounded w-3/4 mb-4" />
               <div className="h-8 bg-slate-200 rounded w-1/2" />
@@ -85,8 +86,16 @@ export default function DashboardPage() {
         <p className="text-slate-500 text-sm mt-1">{t("subtitle")}</p>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      {/* KPI Cards — ordered most urgent → least urgent */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <KpiCard
+          title={t("expiredItems")}
+          value={String(stats?.expired_count ?? 0)}
+          sub="remove from shelf"
+          icon={ShieldAlert}
+          iconClass="bg-red-800 text-white"
+          cardClass="border-red-800 bg-red-700"
+        />
         <KpiCard
           title={t("criticalItems")}
           value={String(stats?.critical_count ?? 0)}
@@ -191,7 +200,11 @@ export default function DashboardPage() {
                         {tRisk(alert.risk_level)}
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-slate-600">{alert.days_until_expiry}d</td>
+                    <td className="py-3 px-3 text-slate-600">
+                      {alert.days_until_expiry < 0
+                        ? `${Math.abs(alert.days_until_expiry)}d ago`
+                        : `${alert.days_until_expiry}d`}
+                    </td>
                     <td className="py-3 px-3 text-right font-medium text-red-600">
                       {formatCurrency(alert.estimated_loss ?? 0)}
                     </td>
