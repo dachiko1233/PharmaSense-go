@@ -1,0 +1,1 @@
+ALTER TABLE alert_actions ADD COLUMN IF NOT EXISTS quantity INTEGER;

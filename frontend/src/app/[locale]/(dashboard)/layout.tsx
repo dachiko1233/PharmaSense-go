@@ -9,7 +9,7 @@ import { apiFetch } from "@/lib/api/client";
 import { cn, planBadgeClass } from "@/lib/utils";
 import {
   LayoutDashboard, Package, Bell, FileText, Upload,
-  CreditCard, Network, Settings, LogOut, ChevronDown,
+  Network, Settings, LogOut, ChevronDown,
   Menu, X, Globe
 } from "lucide-react";
 import { toast } from "sonner";
@@ -31,7 +31,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [pharmacies, setPharmacies] = useState<PharmacyOption[]>([]);
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   useEffect(() => {
     hydrate();
@@ -58,13 +57,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setPharmacy(res.pharmacy, res.token);
       setSwitcherOpen(false);
       toast.success(`Switched to ${res.pharmacy.name}`);
-    } catch (err: any) {
+    } catch {
       toast.error("Failed to switch pharmacy");
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await apiFetch("/auth/logout", { method: "POST" });
+    } catch {
+      // JWT is stateless; proceed regardless
+    }
     logout();
+    toast.success("Logged out successfully");
     router.push(`/${locale}/login`);
   };
 
@@ -80,7 +85,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { href: `/${locale}/alerts`, label: t("alerts"), icon: Bell },
     { href: `/${locale}/reports`, label: t("reports"), icon: FileText },
     { href: `/${locale}/import`, label: t("import"), icon: Upload },
-    { href: `/${locale}/billing`, label: t("billing"), icon: CreditCard },
     ...(role === "chain_admin" ? [{ href: `/${locale}/chain`, label: t("chain"), icon: Network }] : []),
     { href: `/${locale}/settings`, label: t("settings"), icon: Settings },
   ];
@@ -94,7 +98,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="h-screen bg-slate-50 flex overflow-hidden">
       {/* Sidebar overlay on mobile */}
       {sidebarOpen && (
         <div
@@ -107,10 +111,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <aside className={cn(
         "fixed inset-y-0 left-0 z-30 w-64 bg-white border-r border-slate-200 flex flex-col transition-transform duration-300",
         sidebarOpen ? "translate-x-0" : "-translate-x-full",
-        "lg:static lg:translate-x-0"
+        "lg:relative lg:translate-x-0 lg:flex-shrink-0"
       )}>
         {/* Logo */}
-        <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
+        <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center">
               <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -124,7 +128,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </button>
         </div>
 
-        {/* Navigation */}
+        {/* Navigation — scrollable if many items */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {navItems.map(({ href, label, icon: Icon }) => {
             const isActive = pathname === href || pathname.startsWith(href + "/");
@@ -147,22 +151,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
         </nav>
 
-        {/* Logout */}
-        <div className="px-3 py-4 border-t border-slate-200">
+        {/* Bottom: user info + logout — always visible, never scrolls away */}
+        <div className="border-t border-slate-200 px-3 py-3 space-y-1 flex-shrink-0">
+          {user && (
+            <div className="px-3 py-2">
+              <div className="text-sm font-medium text-slate-900 truncate">{user.full_name}</div>
+              <div className="text-xs text-slate-500 truncate">{user.email}</div>
+            </div>
+          )}
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-600 w-full transition-colors"
+            className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-4 h-4 flex-shrink-0" />
             {t("logout")}
           </button>
         </div>
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top header */}
-        <header className="bg-white border-b border-slate-200 px-4 lg:px-6 py-3 flex items-center gap-4">
+        <header className="bg-white border-b border-slate-200 px-4 lg:px-6 py-3 flex items-center gap-4 flex-shrink-0">
           <button
             onClick={() => setSidebarOpen(true)}
             className="lg:hidden p-1.5 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100"
@@ -213,33 +223,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           )}
 
-          {/* Plan badge */}
-          {pharmacy?.plan && (
-            <span className={cn("text-xs px-2.5 py-1 rounded-full font-semibold hidden sm:inline-flex", planBadgeClass(pharmacy.plan))}>
-              {pharmacy.plan.toUpperCase()}
-            </span>
-          )}
-
-          {/* User menu */}
-          <div className="relative">
-            <button
-              onClick={() => setUserMenuOpen(!userMenuOpen)}
-              className="flex items-center gap-2 hover:bg-slate-100 rounded-lg px-2 py-1.5"
-            >
-              <div className="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                {user?.full_name?.[0]?.toUpperCase() ?? "U"}
-              </div>
-              <div className="hidden sm:block text-left">
-                <div className="text-sm font-medium text-slate-900 leading-tight">{user?.full_name ?? "User"}</div>
-                <div className="text-xs text-slate-500 capitalize">{role}</div>
-              </div>
-            </button>
+          {/* User avatar */}
+          <div className="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
+            {user?.full_name?.[0]?.toUpperCase() ?? "U"}
           </div>
         </header>
 
         {/* Email verification banner */}
         {user && !user.email_verified && (
-          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-800 flex items-center justify-center gap-2">
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-800 flex items-center justify-center gap-2 flex-shrink-0">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.068 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
@@ -248,7 +240,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-y-auto">
           {children}
         </main>
       </div>

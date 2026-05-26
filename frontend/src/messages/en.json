@@ -5,7 +5,6 @@
     "alerts": "Alerts",
     "reports": "Reports",
     "import": "CSV Import",
-    "billing": "Billing",
     "chain": "Chain Overview",
     "settings": "Settings",
     "logout": "Log out"
@@ -78,22 +77,16 @@
     "dismiss": "Dismiss",
     "actionRecorded": "Action recorded",
     "noAlerts": "No alerts for this risk level",
-    "removeFromShelfWarning": "REMOVE FROM SHELF — Cannot be sold. Return to supplier or discard per regulations."
-  },
-  "billing": {
-    "title": "Billing & Subscription",
-    "currentPlan": "Current Plan",
-    "upgrade": "Upgrade",
-    "manage": "Manage Subscription",
-    "free": "Free",
-    "pro": "Pro",
-    "chain": "Chain",
-    "freeDesc": "1 pharmacy, 100 items, no SMS",
-    "proDesc": "Unlimited inventory, SMS, daily digest",
-    "chainDesc": "Up to 10 pharmacies, all features",
-    "perMonth": "/month",
-    "upgradeSuccess": "Redirecting to checkout...",
-    "features": "Features"
+    "removeFromShelfWarning": "REMOVE FROM SHELF — Cannot be sold. Return to supplier or discard per regulations.",
+    "returnModal": {
+      "title": "Return to Supplier",
+      "quantityLabel": "Quantity to return",
+      "quantityHelp": "How many units are you returning?",
+      "notesLabel": "Reason / Notes (optional)",
+      "confirm": "Confirm Return",
+      "cancel": "Cancel",
+      "success": "Returned {quantity} units. Refund: {amount}"
+    }
   },
   "settings": {
     "title": "Settings",

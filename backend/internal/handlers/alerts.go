@@ -3,6 +3,7 @@ package handlers
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -95,9 +96,10 @@ func (h *AlertHandler) List(c *gin.Context) {
 }
 
 type alertActionRequest struct {
-	ActionType     string  `json:"action_type"     binding:"required"`
-	DiscountPct    *int    `json:"discount_percent"`
-	Notes          *string `json:"notes"`
+	ActionType  string  `json:"action_type"     binding:"required"`
+	Quantity    *int    `json:"quantity"`
+	DiscountPct *int    `json:"discount_percent"`
+	Notes       *string `json:"notes"`
 }
 
 func (h *AlertHandler) Action(c *gin.Context) {
@@ -116,23 +118,78 @@ func (h *AlertHandler) Action(c *gin.Context) {
 		return
 	}
 
-	// Verify batch belongs to pharmacy
-	var exists bool
-	_ = h.db.QueryRow(c.Request.Context(),
-		`SELECT EXISTS(SELECT 1 FROM inventory_batches WHERE id = $1 AND pharmacy_id = $2)`,
+	// Fetch batch (verify ownership + get current_quantity and purchase_price)
+	var currentQty int
+	var purchasePrice float64
+	err = h.db.QueryRow(c.Request.Context(),
+		`SELECT current_quantity, purchase_price FROM inventory_batches WHERE id = $1 AND pharmacy_id = $2`,
 		batchID, pharmacyID,
-	).Scan(&exists)
-	if !exists {
+	).Scan(&currentQty, &purchasePrice)
+	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": "batch not found"})
 		return
 	}
 
+	if strings.EqualFold(req.ActionType, "RETURN") {
+		// Default to returning the full quantity if not specified
+		qty := currentQty
+		if req.Quantity != nil {
+			qty = *req.Quantity
+		}
+		if qty <= 0 || qty > currentQty {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "quantity must be between 1 and current stock"})
+			return
+		}
+
+		tx, err := h.db.Begin(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start transaction"})
+			return
+		}
+		defer tx.Rollback(c.Request.Context())
+
+		_, err = tx.Exec(c.Request.Context(),
+			`UPDATE inventory_batches SET current_quantity = current_quantity - $1, updated_at = NOW() WHERE id = $2`,
+			qty, batchID,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update inventory"})
+			return
+		}
+
+		var id uuid.UUID
+		err = tx.QueryRow(c.Request.Context(), `
+			INSERT INTO alert_actions (batch_id, pharmacy_id, user_id, action_type, quantity, discount_percent, notes)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			RETURNING id
+		`, batchID, pharmacyID, userID, req.ActionType, qty, req.DiscountPct, req.Notes).Scan(&id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to record action"})
+			return
+		}
+
+		if err := tx.Commit(c.Request.Context()); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to commit"})
+			return
+		}
+
+		refundValue := float64(qty) * purchasePrice
+		c.JSON(http.StatusCreated, gin.H{
+			"id":           id,
+			"message":      "action recorded",
+			"refund_value": refundValue,
+			"quantity":     qty,
+		})
+		return
+	}
+
+	// Non-RETURN actions — simple insert
 	var id uuid.UUID
 	err = h.db.QueryRow(c.Request.Context(), `
-		INSERT INTO alert_actions (batch_id, pharmacy_id, user_id, action_type, discount_percent, notes)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO alert_actions (batch_id, pharmacy_id, user_id, action_type, quantity, discount_percent, notes)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id
-	`, batchID, pharmacyID, userID, req.ActionType, req.DiscountPct, req.Notes).Scan(&id)
+	`, batchID, pharmacyID, userID, req.ActionType, req.Quantity, req.DiscountPct, req.Notes).Scan(&id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to record action"})
 		return

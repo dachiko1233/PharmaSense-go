@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
+import { useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api/client";
 import { formatCurrency, riskBadgeClass } from "@/lib/utils";
 import { DashboardStats, TimelinePoint, RiskAssessment } from "@/types";
@@ -37,6 +38,8 @@ function KpiCard({ title, value, sub, icon: Icon, iconClass, cardClass }: {
 export default function DashboardPage() {
   const t = useTranslations("dashboard");
   const tRisk = useTranslations("risk");
+  const { locale } = useParams();
+  const fmtCurrency = (amount: number) => formatCurrency(amount, "EUR", locale as string);
 
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["dashboard"],
@@ -105,21 +108,21 @@ export default function DashboardPage() {
         />
         <KpiCard
           title={t("estimatedLoss")}
-          value={formatCurrency(stats?.estimated_loss ?? 0)}
+          value={fmtCurrency(stats?.estimated_loss ?? 0)}
           sub="if no action taken"
           icon={TrendingDown}
           iconClass="bg-orange-100 text-orange-600"
         />
         <KpiCard
           title={t("potentialSavings")}
-          value={formatCurrency(stats?.potential_savings ?? 0)}
+          value={fmtCurrency(stats?.potential_savings ?? 0)}
           sub="with recommended actions"
           icon={TrendingUp}
           iconClass="bg-emerald-100 text-emerald-600"
         />
         <KpiCard
           title={t("inventoryValue")}
-          value={formatCurrency(stats?.total_inventory_value ?? 0)}
+          value={fmtCurrency(stats?.total_inventory_value ?? 0)}
           sub={`${stats?.total_batches ?? 0} active batches`}
           icon={Package}
           iconClass="bg-blue-100 text-blue-600"
@@ -144,7 +147,7 @@ export default function DashboardPage() {
               <YAxis tick={{ fontSize: 12, fill: "#64748b" }} />
               <Tooltip
                 contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}
-                formatter={(v) => [formatCurrency(v as number), "Value at risk"]}
+                formatter={(v) => [fmtCurrency(v as number), "Value at risk"]}
               />
               <Area
                 type="monotone"
@@ -167,7 +170,7 @@ export default function DashboardPage() {
               <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11, fill: "#64748b" }} />
               <Tooltip
                 contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}
-                formatter={(v) => [formatCurrency(v as number), "Est. Loss"]}
+                formatter={(v) => [fmtCurrency(v as number), "Est. Loss"]}
               />
               <Bar dataKey="loss" fill="#ef4444" radius={[0, 4, 4, 0]} />
             </BarChart>
@@ -206,7 +209,7 @@ export default function DashboardPage() {
                         : `${alert.days_until_expiry}d`}
                     </td>
                     <td className="py-3 px-3 text-right font-medium text-red-600">
-                      {formatCurrency(alert.estimated_loss ?? 0)}
+                      {fmtCurrency(alert.estimated_loss ?? 0)}
                     </td>
                   </tr>
                 ))}

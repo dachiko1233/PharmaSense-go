@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
+import { useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api/client";
 import { formatCurrency, formatDate, riskBadgeClass, cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { CheckCircle, ArrowRightLeft, RotateCcw, XCircle, Trash2 } from "lucide-react";
+import { ReturnSupplierModal } from "./ReturnSupplierModal";
 
 type Tab = "" | "EXPIRED" | "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 
@@ -25,11 +27,23 @@ interface AlertRow {
   purchase_price: number;
 }
 
+interface ReturnActionResponse {
+  id: string;
+  message: string;
+  refund_value: number;
+  quantity: number;
+}
+
 export default function AlertsPage() {
   const t = useTranslations("alerts");
+  const tModal = useTranslations("alerts.returnModal");
   const tRisk = useTranslations("risk");
   const queryClient = useQueryClient();
+  const { locale } = useParams();
+  const fmtCurrency = (amount: number) => formatCurrency(amount, "EUR", locale as string);
+
   const [tab, setTab] = useState<Tab>("EXPIRED");
+  const [returnTarget, setReturnTarget] = useState<AlertRow | null>(null);
 
   const { data: alerts = [], isLoading } = useQuery<AlertRow[]>({
     queryKey: ["alerts", tab],
@@ -48,6 +62,29 @@ export default function AlertsPage() {
     },
     onError: () => toast.error("Action failed"),
   });
+
+  const returnMutation = useMutation({
+    mutationFn: ({ batchId, quantity, notes }: { batchId: string; quantity: number; notes?: string }) =>
+      apiFetch<ReturnActionResponse>(`/alerts/${batchId}/action`, {
+        method: "POST",
+        body: JSON.stringify({ action_type: "RETURN", quantity, notes }),
+      }),
+    onSuccess: (data) => {
+      const refundStr = fmtCurrency(data.refund_value);
+      toast.success(tModal("success", { quantity: data.quantity, amount: refundStr }));
+      setReturnTarget(null);
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: () => {
+      toast.error("Return failed");
+    },
+  });
+
+  const handleReturnConfirm = (quantity: number, notes?: string) => {
+    if (!returnTarget) return;
+    returnMutation.mutate({ batchId: returnTarget.batch_id, quantity, notes });
+  };
 
   const tabs: { label: string; value: Tab }[] = [
     { label: t("expired"), value: "EXPIRED" },
@@ -140,7 +177,7 @@ export default function AlertsPage() {
                   </div>
                   <div className="bg-slate-50 rounded-lg p-2.5">
                     <div className="text-slate-500 mb-0.5">Est. Loss</div>
-                    <div className="font-bold text-red-600">{formatCurrency(alert.estimated_loss ?? 0)}</div>
+                    <div className="font-bold text-red-600">{fmtCurrency(alert.estimated_loss ?? 0)}</div>
                     <div className="text-slate-400">{alert.current_quantity} units</div>
                   </div>
                 </div>
@@ -166,7 +203,7 @@ export default function AlertsPage() {
                       {t("dispose")}
                     </button>
                     <button
-                      onClick={() => actionMutation.mutate({ batchId: alert.batch_id, actionType: "return" })}
+                      onClick={() => setReturnTarget(alert)}
                       className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
@@ -194,7 +231,7 @@ export default function AlertsPage() {
                       {t("transfer")}
                     </button>
                     <button
-                      onClick={() => actionMutation.mutate({ batchId: alert.batch_id, actionType: "return" })}
+                      onClick={() => setReturnTarget(alert)}
                       className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
@@ -214,6 +251,18 @@ export default function AlertsPage() {
           })}
         </div>
       )}
+
+      {/* Return to Supplier Modal */}
+      <ReturnSupplierModal
+        open={returnTarget !== null}
+        onClose={() => setReturnTarget(null)}
+        onConfirm={handleReturnConfirm}
+        productName={returnTarget?.product_name ?? ""}
+        currentQuantity={returnTarget?.current_quantity ?? 1}
+        purchasePrice={returnTarget?.purchase_price ?? 0}
+        locale={locale as string}
+        isLoading={returnMutation.isPending}
+      />
     </div>
   );
 }

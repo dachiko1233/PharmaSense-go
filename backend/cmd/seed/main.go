@@ -321,7 +321,11 @@ func createProducts(ctx context.Context, pool *pgxpool.Pool) ([]uuid.UUID, error
 	return ids, err
 }
 
-// seedPharmacyData bulk-inserts batches + sales for one pharmacy in two CopyFrom calls.
+// seedPharmacyData bulk-inserts batches + sales for one pharmacy.
+// Quantities and prices are calibrated for a small Cyprus pharmacy:
+//   - Critical items: 15-45
+//   - Estimated loss: €300-€2500/month
+//   - Total inventory value: €25,000-€80,000
 func seedPharmacyData(ctx context.Context, pool *pgxpool.Pool, pharmacyID uuid.UUID, productIDs []uuid.UUID, rng *rand.Rand) error {
 	suppliers := []string{"MedSupply Cyprus", "PharmaWholesale Ltd", "EuroMeds"}
 	today := time.Now().UTC().Truncate(24 * time.Hour)
@@ -336,44 +340,55 @@ func seedPharmacyData(ctx context.Context, pool *pgxpool.Pool, pharmacyID uuid.U
 		sellingPrice  float64
 		supplier      string
 		receivedDate  time.Time
-		avgSales      float64
+		avgSales      float64 // daily sales rate used for generating sales history
 	}
 
 	var batches []batchMeta
 	for _, productID := range productIDs {
-		numBatches := 3 + rng.Intn(2)
+		numBatches := 1 + rng.Intn(2) // 1-2 batches per product → ~115-230 total
 		for b := 0; b < numBatches; b++ {
 			riskRoll := rng.Float64()
 			var daysExpiry, qty int
-			var avgSales float64
+			var avgSales, purchasePrice float64
 
 			switch {
 			case riskRoll < 0.05:
-				// EXPIRED: already past expiry date (1-14 days ago)
-				daysExpiry = -(1 + rng.Intn(14))
-				qty = 10 + rng.Intn(50)
-				avgSales = float64(rng.Intn(3) + 1)
-			case riskRoll < 0.20:
-				// CRITICAL: expires within 30 days
-				daysExpiry = 5 + rng.Intn(25)
-				qty = 50 + rng.Intn(150)
-				avgSales = float64(rng.Intn(3) + 1)
-			case riskRoll < 0.45:
-				// HIGH: expires 31-90 days
-				daysExpiry = 31 + rng.Intn(60)
-				qty = 100 + rng.Intn(200)
-				avgSales = float64(rng.Intn(2) + 1)
-			case riskRoll < 0.65:
-				// MEDIUM: expires 91-180 days
-				daysExpiry = 91 + rng.Intn(90)
-				qty = 60 + rng.Intn(100)
-				avgSales = float64(rng.Intn(3) + 1)
+				// EXPIRED: already past expiry — small forgotten stock
+				daysExpiry = -(1 + rng.Intn(7))           // 1-7 days past expiry
+				qty = 2 + rng.Intn(7)                      // 2-8 units
+				avgSales = 0.05 + rng.Float64()*0.15       // 0.05-0.20/day (slow mover)
+				purchasePrice = roundPrice(2.0 + rng.Float64()*6.0) // €2-€8
+
+			case riskRoll < 0.17:
+				// CRITICAL: expires in 5-25 days, slow-moving → surplus builds
+				daysExpiry = 5 + rng.Intn(21)              // 5-25 days
+				qty = 10 + rng.Intn(13)                    // 10-22 units
+				avgSales = 0.10 + rng.Float64()*0.15       // 0.10-0.25/day
+				purchasePrice = roundPrice(3.0 + rng.Float64()*7.0) // €3-€10
+
+			case riskRoll < 0.37:
+				// HIGH: expires 31-90 days, moderate stock of slow mover
+				daysExpiry = 31 + rng.Intn(60)             // 31-90 days
+				qty = 16 + rng.Intn(9)                     // 16-24 units
+				avgSales = 0.10 + rng.Float64()*0.15       // 0.10-0.25/day (slow → surplus)
+				purchasePrice = roundPrice(1.5 + rng.Float64()*4.5) // €1.5-€6
+
+			case riskRoll < 0.57:
+				// MEDIUM: expires 91-180 days, moderate stock
+				daysExpiry = 91 + rng.Intn(90)             // 91-180 days
+				qty = 15 + rng.Intn(16)                    // 15-30 units
+				avgSales = 0.35 + rng.Float64()*0.45       // 0.35-0.80/day
+				purchasePrice = roundPrice(3.0 + rng.Float64()*9.0) // €3-€12
+
 			default:
-				// LOW: expires 181+ days
-				daysExpiry = 181 + rng.Intn(365)
-				qty = 20 + rng.Intn(80)
-				avgSales = float64(rng.Intn(5) + 2)
+				// LOW: healthy long-dated stock — bulk of pharmacy inventory value
+				daysExpiry = 181 + rng.Intn(365)           // 181-545 days
+				qty = 40 + rng.Intn(61)                    // 40-100 units
+				avgSales = 1.0 + rng.Float64()*2.5         // 1.0-3.5/day
+				purchasePrice = roundPrice(8.0 + rng.Float64()*22.0) // €8-€30
 			}
+
+			sellingPrice := roundPrice(purchasePrice * (1.20 + rng.Float64()*0.40))
 
 			batches = append(batches, batchMeta{
 				id:            uuid.New(),
@@ -381,8 +396,8 @@ func seedPharmacyData(ctx context.Context, pool *pgxpool.Pool, pharmacyID uuid.U
 				batchNum:      fmt.Sprintf("BN-%d-%04d", today.Year(), rng.Intn(9999)+1),
 				expiryDate:    today.AddDate(0, 0, daysExpiry),
 				qty:           qty,
-				purchasePrice: roundPrice(0.50 + rng.Float64()*49.50),
-				sellingPrice:  roundPrice((0.50 + rng.Float64()*49.50) * (1.2 + rng.Float64()*0.5)),
+				purchasePrice: purchasePrice,
+				sellingPrice:  sellingPrice,
 				supplier:      suppliers[rng.Intn(len(suppliers))],
 				receivedDate:  today.AddDate(0, 0, -(30 + rng.Intn(60))),
 				avgSales:      avgSales,
@@ -407,7 +422,9 @@ func seedPharmacyData(ctx context.Context, pool *pgxpool.Pool, pharmacyID uuid.U
 		return fmt.Errorf("copy batches: %w", err)
 	}
 
-	// Generate all sales in memory, then one CopyFrom for the entire pharmacy
+	// Sales history — stochastic rounding so the DB reflects the intended avgSales rate.
+	// floor(avgSales) guaranteed + 1 extra with probability equal to the fractional part.
+	// This gives the risk engine accurate per-batch velocity data for all rates ≥ 0.05/day.
 	type saleRow struct {
 		pharmacyID uuid.UUID
 		batchID    uuid.UUID
@@ -421,24 +438,25 @@ func seedPharmacyData(ctx context.Context, pool *pgxpool.Pool, pharmacyID uuid.U
 	for _, b := range batches {
 		for dayOffset := 90; dayOffset >= 1; dayOffset-- {
 			saleDate := today.AddDate(0, 0, -dayOffset)
-			dailyQty := 0
-			for dailyQty < int(b.avgSales*2) {
-				if rng.Float64() < b.avgSales/float64(int(b.avgSales*2)+1) {
-					dailyQty += rng.Intn(3) + 1
-				} else {
-					break
-				}
+
+			// Poisson-like: base = floor(avgSales), +1 with prob = fractional part
+			dailyQty := int(b.avgSales)
+			if rng.Float64() < b.avgSales-float64(int(b.avgSales)) {
+				dailyQty++
 			}
 			if dailyQty == 0 {
 				continue
 			}
-			if b.qty/10 > 0 && dailyQty > b.qty/10 {
-				dailyQty = b.qty / 10
+			// Cap at 15% of batch size per day to avoid implausible single-day depletion
+			cap := b.qty / 7
+			if cap < 1 {
+				cap = 1
 			}
-			if dailyQty < 1 {
-				continue
+			if dailyQty > cap {
+				dailyQty = cap
 			}
-			unitPrice := roundPrice(1.0 + rng.Float64()*50.0)
+
+			unitPrice := roundPrice(b.sellingPrice * (0.95 + rng.Float64()*0.10))
 			allSales = append(allSales, saleRow{
 				pharmacyID, b.id, b.productID,
 				dailyQty, unitPrice, roundPrice(float64(dailyQty) * unitPrice), saleDate,
