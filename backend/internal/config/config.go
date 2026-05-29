@@ -3,15 +3,17 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	DatabaseURL    string
-	JWTSecret      string
-	JWTExpiryHours int
-	FrontendOrigin string
+	DatabaseURL     string
+	JWTSecret       string
+	JWTExpiryHours  int
+	FrontendOrigin  string
+	FrontendOrigins []string
 	Env            string
 	Port           string
 	AppURL         string
@@ -37,11 +39,20 @@ func Load() *Config {
 	hours, _ := strconv.Atoi(getEnv("JWT_EXPIRY_HOURS", "24"))
 	disableCron := getEnv("DISABLE_CRON", "false") == "true"
 
+	origin := getEnv("FRONTEND_ORIGIN", "http://localhost:3000")
+	var origins []string
+	for _, o := range strings.Split(origin, ",") {
+		if trimmed := strings.TrimSpace(o); trimmed != "" {
+			origins = append(origins, trimmed)
+		}
+	}
+
 	return &Config{
-		DatabaseURL:    getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/pharmasense?sslmode=disable"),
-		JWTSecret:      getEnv("JWT_SECRET", "dev-secret-change-in-production"),
-		JWTExpiryHours: hours,
-		FrontendOrigin: getEnv("FRONTEND_ORIGIN", "http://localhost:3000"),
+		DatabaseURL:     getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/pharmasense?sslmode=disable"),
+		JWTSecret:       getEnv("JWT_SECRET", "dev-secret-change-in-production"),
+		JWTExpiryHours:  hours,
+		FrontendOrigin:  origin,
+		FrontendOrigins: origins,
 		Env:            getEnv("ENV", "development"),
 		Port:           getEnv("PORT", "3001"),
 		AppURL:         getEnv("APP_URL", "http://localhost:3000"),

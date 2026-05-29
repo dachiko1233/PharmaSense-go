@@ -26,7 +26,7 @@ func New(cfg *config.Config, db *pgxpool.Pool) *gin.Engine {
 	r.Use(middleware.SlogLogger())
 
 	corsConfig := cors.Config{
-		AllowOrigins:     []string{cfg.FrontendOrigin},
+		AllowOrigins:     cfg.FrontendOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
