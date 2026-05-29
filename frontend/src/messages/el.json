@@ -127,7 +127,7 @@
     "importing": "Εισαγωγή...",
     "success": "Η εισαγωγή ολοκληρώθηκε",
     "errors": "σφάλματα",
-    "csvFormat": "Μορφή CSV: product_name, batch_number, expiry_date (ΕΕΕΕ-ΜΜ-ΗΗ), quantity, purchase_price, selling_price, received_date (ΕΕΕΕ-ΜΜ-ΗΗ)"
+    "csvFormat": "Απαιτούμενες στήλες: name, expiry_date, quantity, purchase_price, selling_price. Αποδεκτές ημερομηνίες: ΕΕΕΕ-ΜΜ-ΗΗ ή ΗΗ/ΜΜ/ΕΕΕΕ. Προαιρετικά: barcode, batch_number, category, manufacturer, supplier. Κατεβάστε το πρότυπο για την πλήρη μορφή."
   },
   "chain": {
     "title": "Επισκόπηση Αλυσίδας",

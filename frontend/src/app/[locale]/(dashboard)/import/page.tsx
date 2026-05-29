@@ -66,9 +66,9 @@ export default function ImportPage() {
 
   const downloadTemplate = () => {
     const csv = [
-      "product_name,batch_number,expiry_date,quantity,purchase_price,selling_price,received_date",
-      "Paracetamol 500mg,BN-2024-001,2026-06-30,100,0.50,1.20,2024-01-15",
-      "Ibuprofen 400mg,BN-2024-002,2026-03-31,50,0.80,1.80,2024-01-15",
+      "barcode,name,name_el,category,manufacturer,batch_number,expiry_date,quantity,purchase_price,selling_price,supplier",
+      "5290000099001,Aspirin 500mg,Ασπιρίνη 500mg,Painkillers,Bayer,BTH-EXAMPLE,2026-12-31,100,2.50,4.50,MedSupply Cyprus",
+      "5290000099002,Ibuprofen 400mg,Ιβουπροφαίνη 400mg,Painkillers,Ratiopharm,BTH-001,2026-06-30,50,0.80,1.80,",
     ].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
