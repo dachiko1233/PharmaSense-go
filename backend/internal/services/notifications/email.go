@@ -51,7 +51,7 @@ func (s *EmailService) Send(ctx context.Context, to, subject, html string) error
 }
 
 func (s *EmailService) SendWelcome(ctx context.Context, to, fullName, appURL, verificationToken string) error {
-	verifyLink := fmt.Sprintf("%s/verify-email?token=%s", appURL, verificationToken)
+	verifyLink := fmt.Sprintf("%s/en/verify-email?token=%s", appURL, verificationToken)
 	html := fmt.Sprintf(`
 <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
   <h1 style="color:#059669">Welcome to PharmaSense, %s!</h1>
@@ -64,7 +64,7 @@ func (s *EmailService) SendWelcome(ctx context.Context, to, fullName, appURL, ve
 }
 
 func (s *EmailService) SendPasswordReset(ctx context.Context, to, fullName, appURL, resetToken string) error {
-	resetLink := fmt.Sprintf("%s/reset-password?token=%s", appURL, resetToken)
+	resetLink := fmt.Sprintf("%s/en/reset-password?token=%s", appURL, resetToken)
 	html := fmt.Sprintf(`
 <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
   <h1 style="color:#059669">Password Reset — PharmaSense</h1>

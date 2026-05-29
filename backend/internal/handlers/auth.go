@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -48,14 +49,14 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 	}
 
 	// Send welcome email (non-blocking); use Background so the cancelled request ctx doesn't abort it
-	go func(email, fullName, token string) {
-		_ = h.email.SendWelcome(context.Background(), email, fullName, h.appURL, token)
-	}(user.Email, user.FullName, func() string {
-		if user.EmailVerificationToken != nil {
-			return *user.EmailVerificationToken
-		}
-		return ""
-	}())
+	verToken := ""
+	if user.EmailVerificationToken != nil {
+		verToken = *user.EmailVerificationToken
+		slog.Info("signup token generated", "email", user.Email, "token_prefix", verToken[:8]+"...")
+	}
+	go func(email, fullName, tok string) {
+		_ = h.email.SendWelcome(context.Background(), email, fullName, h.appURL, tok)
+	}(user.Email, user.FullName, verToken)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"token":    token,

@@ -110,10 +110,11 @@ func (s *AuthService) Signup(ctx context.Context, pharmacyName, licenseNumber, c
 	err = tx.QueryRow(ctx, `
 		INSERT INTO users (default_pharmacy_id, email, password_hash, full_name, email_verification_token)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, email, full_name, default_pharmacy_id, email_verified, sms_enabled, is_active, created_at
+		RETURNING id, email, full_name, default_pharmacy_id, email_verified, sms_enabled, is_active, created_at, email_verification_token
 	`, pharmacy.ID, email, hash, fullName, verificationToken).Scan(
 		&user.ID, &user.Email, &user.FullName, &user.DefaultPharmacyID,
 		&user.EmailVerified, &user.SMSEnabled, &user.IsActive, &user.CreatedAt,
+		&user.EmailVerificationToken,
 	)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("signup: create user: %w", err)
