@@ -13,9 +13,9 @@ import (
 )
 
 type DigestJob struct {
-	db      *pgxpool.Pool
-	email   *notifications.EmailService
-	appURL  string
+	db     *pgxpool.Pool
+	email  *notifications.EmailService
+	appURL string
 }
 
 func NewDigestJob(db *pgxpool.Pool, email *notifications.EmailService, appURL string) *DigestJob {
@@ -29,7 +29,7 @@ func Start(job *DigestJob) (gocron.Scheduler, error) {
 	}
 
 	_, err = scheduler.NewJob(
-		gocron.CronJob("0 8 * * *", false), // 8 AM every day
+		gocron.CronJob("0 8 * * *", false), // 8 AM Cyprus time every day
 		gocron.NewTask(job.Run),
 	)
 	if err != nil {
@@ -41,56 +41,202 @@ func Start(job *DigestJob) (gocron.Scheduler, error) {
 	return scheduler, nil
 }
 
+// Run is called by the scheduler. It sends the digest to all eligible users.
 func (j *DigestJob) Run() {
-	ctx := context.Background()
-	slog.Info("running daily digest job")
+	sent, failed := j.RunWithStats(context.Background(), "")
+	slog.Info("daily digest complete", "emails_sent", sent, "failed", failed)
+}
 
-	// Find all pharmacies with pro/chain plan that have users with email_verified
-	rows, err := j.db.Query(ctx, `
-		SELECT DISTINCT u.id, u.email, u.full_name, p.id, p.name,
-		       COUNT(ra.id) FILTER (WHERE ra.risk_level = 'CRITICAL') as critical_count,
-		       COALESCE(SUM(ra.estimated_loss) FILTER (WHERE ra.risk_level IN ('CRITICAL','HIGH')), 0) as total_loss
+// RunWithStats sends the daily digest and returns counts. filterPharmacyID limits
+// execution to a single pharmacy when non-empty (used by the manual-trigger endpoint).
+func (j *DigestJob) RunWithStats(ctx context.Context, filterPharmacyID string) (sent, failed int) {
+	slog.Info("running daily digest job", "filter_pharmacy_id", filterPharmacyID)
+
+	// ── query all eligible users+pharmacies ──────────────────────────
+	//
+	// We use DISTINCT ON to get the latest risk assessment per batch,
+	// then aggregate counts and totals per user-pharmacy pair.
+	pharmacyFilter := ""
+	args := []any{}
+	if filterPharmacyID != "" {
+		pharmacyFilter = "AND p.id = $1"
+		args = append(args, filterPharmacyID)
+	}
+
+	query := fmt.Sprintf(`
+		WITH latest_risks AS (
+		    SELECT DISTINCT ON (batch_id)
+		        id, batch_id, pharmacy_id, risk_level, days_until_expiry,
+		        estimated_loss, suggested_discount_percent
+		    FROM risk_assessments
+		    ORDER BY batch_id, calculated_at DESC
+		)
+		SELECT
+		    u.id,
+		    u.email,
+		    u.full_name,
+		    p.id,
+		    p.name,
+		    p.language,
+		    COALESCE(COUNT(lr.id) FILTER (WHERE lr.risk_level = 'EXPIRED'), 0)                               AS expired_count,
+		    COALESCE(COUNT(lr.id) FILTER (WHERE lr.risk_level = 'CRITICAL' AND lr.days_until_expiry <= 7), 0) AS week_count,
+		    COALESCE(COUNT(lr.id) FILTER (WHERE lr.risk_level = 'CRITICAL'), 0)                              AS critical_count,
+		    COALESCE(COUNT(lr.id) FILTER (WHERE lr.risk_level = 'HIGH'), 0)                                  AS high_count,
+		    COALESCE(SUM(lr.estimated_loss) FILTER (
+		        WHERE lr.risk_level IN ('EXPIRED','CRITICAL','HIGH')
+		    ), 0) AS total_loss,
+		    COALESCE(SUM(lr.estimated_loss * lr.suggested_discount_percent / 100.0) FILTER (
+		        WHERE lr.risk_level IN ('CRITICAL','HIGH') AND lr.suggested_discount_percent IS NOT NULL
+		    ), 0) AS potential_savings
 		FROM users u
 		JOIN pharmacy_users pu ON pu.user_id = u.id
 		JOIN pharmacies p ON p.id = pu.pharmacy_id
-		JOIN risk_assessments ra ON ra.pharmacy_id = p.id
+		LEFT JOIN latest_risks lr ON lr.pharmacy_id = p.id
 		WHERE u.email_verified = true
-		  AND p.plan IN ('pro', 'chain')
-		  AND ra.risk_level = 'CRITICAL'
-		GROUP BY u.id, u.email, u.full_name, p.id, p.name
-		HAVING COUNT(ra.id) FILTER (WHERE ra.risk_level = 'CRITICAL') > 0
-	`)
+		  AND u.daily_digest_enabled = true
+		  AND p.plan IN ('pro','chain')
+		  %s
+		GROUP BY u.id, u.email, u.full_name, p.id, p.name, p.language
+	`, pharmacyFilter)
+
+	rows, err := j.db.Query(ctx, query, args...)
 	if err != nil {
-		slog.Error("daily digest: query failed", "error", err)
+		slog.Error("daily digest: summary query failed", "error", err)
 		return
 	}
 	defer rows.Close()
 
-	sent := 0
+	type recipientRow struct {
+		userID       string
+		email        string
+		fullName     string
+		pharmacyID   string
+		pharmacyName string
+		language     string
+		expiredCount int
+		weekCount    int
+		criticalCount int
+		highCount    int
+		totalLoss    float64
+		savings      float64
+	}
+
+	var recipients []recipientRow
 	for rows.Next() {
-		var userID, pharmacyID string
-		var email, fullName, pharmacyName string
-		var criticalCount int
-		var totalLoss float64
-		if err := rows.Scan(&userID, &email, &fullName, &pharmacyID, &pharmacyName, &criticalCount, &totalLoss); err != nil {
+		var r recipientRow
+		if err := rows.Scan(
+			&r.userID, &r.email, &r.fullName,
+			&r.pharmacyID, &r.pharmacyName, &r.language,
+			&r.expiredCount, &r.weekCount, &r.criticalCount, &r.highCount,
+			&r.totalLoss, &r.savings,
+		); err != nil {
+			slog.Error("daily digest: scan row failed", "error", err)
 			continue
 		}
-		if err := j.email.SendDailyDigest(ctx, email, fullName, pharmacyName, j.appURL, criticalCount, totalLoss); err != nil {
-			slog.Error("daily digest: send failed", "email", email, "error", err)
-			continue
-		}
-		sent++
+		recipients = append(recipients, r)
 	}
 	if err := rows.Err(); err != nil {
 		slog.Error("daily digest: row iteration error", "error", err)
 	}
-	slog.Info("daily digest complete", "emails_sent", sent)
+	rows.Close()
+
+	for _, r := range recipients {
+		topItems, err := j.fetchTopItems(ctx, r.pharmacyID, r.language)
+		if err != nil {
+			slog.Warn("daily digest: top items query failed", "pharmacy_id", r.pharmacyID, "error", err)
+		}
+
+		data := notifications.DigestData{
+			FullName:         r.fullName,
+			PharmacyName:     r.pharmacyName,
+			Language:         r.language,
+			AppURL:           j.appURL,
+			ExpiredCount:     r.expiredCount,
+			WeekCount:        r.weekCount,
+			CriticalCount:    r.criticalCount,
+			HighCount:        r.highCount,
+			TotalAtRisk:      r.totalLoss,
+			PotentialSavings: r.savings,
+			TopItems:         topItems,
+		}
+
+		sendErr := j.email.SendDailyDigest(ctx, r.email, data)
+		status := "sent"
+		var errMsg *string
+		if sendErr != nil {
+			slog.Error("daily digest: send failed", "email", r.email, "error", sendErr)
+			status = "failed"
+			msg := sendErr.Error()
+			errMsg = &msg
+			failed++
+		} else {
+			sent++
+		}
+
+		j.logNotification(ctx, r.userID, r.pharmacyID, r.email, status, errMsg)
+	}
+
+	return sent, failed
+}
+
+// fetchTopItems returns the top 5 most urgent at-risk products for a pharmacy.
+func (j *DigestJob) fetchTopItems(ctx context.Context, pharmacyID, language string) ([]notifications.DigestItem, error) {
+	rows, err := j.db.Query(ctx, `
+		WITH latest_risks AS (
+		    SELECT DISTINCT ON (batch_id)
+		        id, batch_id, pharmacy_id, risk_level, days_until_expiry,
+		        estimated_loss
+		    FROM risk_assessments
+		    ORDER BY batch_id, calculated_at DESC
+		)
+		SELECT
+		    CASE WHEN $2 = 'el' AND pr.name_el IS NOT NULL THEN pr.name_el ELSE pr.name END AS product_name,
+		    lr.days_until_expiry,
+		    ib.current_quantity,
+		    COALESCE(lr.estimated_loss, 0) AS estimated_loss,
+		    lr.risk_level
+		FROM latest_risks lr
+		JOIN inventory_batches ib ON ib.id = lr.batch_id
+		JOIN products pr ON pr.id = ib.product_id
+		WHERE lr.pharmacy_id = $1
+		  AND lr.risk_level IN ('EXPIRED','CRITICAL','HIGH')
+		  AND ib.current_quantity > 0
+		ORDER BY
+		    CASE lr.risk_level WHEN 'EXPIRED' THEN 1 WHEN 'CRITICAL' THEN 2 WHEN 'HIGH' THEN 3 END ASC,
+		    lr.days_until_expiry ASC,
+		    lr.estimated_loss DESC NULLS LAST
+		LIMIT 5
+	`, pharmacyID, language)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []notifications.DigestItem
+	for rows.Next() {
+		var item notifications.DigestItem
+		if err := rows.Scan(&item.ProductName, &item.DaysLeft, &item.Quantity, &item.Loss, &item.RiskLevel); err != nil {
+			continue
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// logNotification writes a row to notification_log for audit purposes.
+func (j *DigestJob) logNotification(ctx context.Context, userID, pharmacyID, recipient, status string, errMsg *string) {
+	_, err := j.db.Exec(ctx, `
+		INSERT INTO notification_log (user_id, pharmacy_id, channel, template, recipient, status, error_message)
+		VALUES ($1, $2, 'email', 'daily_digest', $3, $4, $5)
+	`, userID, pharmacyID, recipient, status, errMsg)
+	if err != nil {
+		slog.Warn("daily digest: failed to write notification log", "error", err)
+	}
 }
 
 func cyprusLocation() *time.Location {
 	loc, err := time.LoadLocation("Asia/Nicosia")
 	if err != nil {
-		// Fallback to UTC+2 (EET)
 		loc = time.FixedZone("EET", 2*60*60)
 	}
 	return loc

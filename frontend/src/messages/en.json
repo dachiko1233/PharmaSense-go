@@ -97,7 +97,15 @@
     "phoneNumber": "Phone Number",
     "phonePlaceholder": "+357 99 000000",
     "save": "Save Changes",
-    "saved": "Settings saved"
+    "saved": "Settings saved",
+    "emailPreferences": {
+      "title": "Email Preferences",
+      "dailyDigest": "Daily digest",
+      "dailyDigestHelp": "Receive a summary of inventory alerts every morning",
+      "digestTime": "Delivery time",
+      "save": "Save preferences",
+      "saved": "Preferences saved"
+    }
   },
   "reports": {
     "title": "Reports",

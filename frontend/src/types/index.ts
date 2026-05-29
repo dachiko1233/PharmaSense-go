@@ -107,6 +107,8 @@ export interface NotificationSettings {
   phone_number?: string;
   sms_enabled: boolean;
   email_verified: boolean;
+  daily_digest_enabled: boolean;
+  digest_time: string; // "HH:MM"
 }
 
 export interface SavingsPoint {

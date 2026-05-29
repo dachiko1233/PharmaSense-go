@@ -13,10 +13,11 @@ import (
 	"pharmasense/internal/middleware"
 	"pharmasense/internal/services"
 	"pharmasense/internal/services/billing"
+	"pharmasense/internal/services/cron"
 	"pharmasense/internal/services/notifications"
 )
 
-func New(cfg *config.Config, db *pgxpool.Pool) *gin.Engine {
+func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gin.Engine {
 	if cfg.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -64,6 +65,11 @@ func New(cfg *config.Config, db *pgxpool.Pool) *gin.Engine {
 	reportH := handlers.NewReportHandler(db)
 	settingsH := handlers.NewSettingsHandler(db)
 	billingH := handlers.NewBillingHandler(db, billingProvider, stripeReal, isMockBilling)
+
+	var adminH *handlers.AdminHandler
+	if len(digestJob) > 0 && digestJob[0] != nil {
+		adminH = handlers.NewAdminHandler(db, digestJob[0])
+	}
 
 	// Suppress unused variable warning
 	_ = smsSvc
@@ -195,6 +201,11 @@ func New(cfg *config.Config, db *pgxpool.Pool) *gin.Engine {
 	protected.POST("/billing/checkout-session", billingH.CheckoutSession)
 	protected.POST("/billing/portal-session", billingH.PortalSession)
 	protected.GET("/billing/subscription", billingH.Subscription)
+
+	// Admin utilities
+	if adminH != nil {
+		protected.POST("/admin/trigger-digest", adminH.TriggerDigest)
+	}
 
 	return r
 }
