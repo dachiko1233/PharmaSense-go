@@ -9,6 +9,25 @@ import { useEffect } from "react";
 import { toast } from "sonner";
 import { Bell, Mail, MessageSquare } from "lucide-react";
 
+function formatDigestTime(digestTime: string | undefined): string {
+  if (!digestTime) return "8:00 AM";
+  const hour = parseInt(digestTime.split(":")[0], 10);
+  const period = hour >= 12 ? "PM" : "AM";
+  const display = hour % 12 || 12;
+  return `${display}:00 ${period}`;
+}
+
+const DIGEST_HOUR_OPTIONS = [
+  { value: "06:00", label: "6:00 AM" },
+  { value: "07:00", label: "7:00 AM" },
+  { value: "08:00", label: "8:00 AM (recommended)" },
+  { value: "09:00", label: "9:00 AM" },
+  { value: "12:00", label: "12:00 PM (noon)" },
+  { value: "15:00", label: "3:00 PM" },
+  { value: "18:00", label: "6:00 PM" },
+  { value: "20:00", label: "8:00 PM" },
+];
+
 export default function SettingsPage() {
   const t = useTranslations("settings");
   const queryClient = useQueryClient();
@@ -59,7 +78,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (data) {
       digestForm.setValue("daily_digest_enabled", data.daily_digest_enabled);
-      digestForm.setValue("digest_time", data.digest_time ?? "08:00");
+      digestForm.setValue("digest_time", (data.digest_time ?? "08:00").slice(0, 5));
     }
   }, [data]);
 
@@ -145,13 +164,18 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 {t("emailPreferences.digestTime")}
               </label>
-              <input
+              <select
                 {...digestForm.register("digest_time")}
-                type="time"
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+              >
+                {DIGEST_HOUR_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
               <p className="text-xs text-slate-400 mt-1">
-                Cyprus time (EET / UTC+2)
+                {t("emailPreferences.digestTimeHelp")}
               </p>
             </div>
           </div>
@@ -195,7 +219,7 @@ export default function SettingsPage() {
             </div>
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-              Daily digest at 8 AM (Pro plan)
+              {t("emailPreferences.digestAt", { time: formatDigestTime(data?.digest_time) })}
             </div>
           </div>
 

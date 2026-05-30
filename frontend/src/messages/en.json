@@ -101,8 +101,10 @@
     "emailPreferences": {
       "title": "Email Preferences",
       "dailyDigest": "Daily digest",
-      "dailyDigestHelp": "Receive a summary of inventory alerts every morning",
+      "dailyDigestHelp": "Receive a summary of inventory alerts at your chosen time",
       "digestTime": "Delivery time",
+      "digestTimeHelp": "When to receive your daily digest (Cyprus time)",
+      "digestAt": "Daily digest at {time} (Pro plan)",
       "save": "Save preferences",
       "saved": "Preferences saved"
     }

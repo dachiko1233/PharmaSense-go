@@ -29,7 +29,7 @@ func Start(job *DigestJob) (gocron.Scheduler, error) {
 	}
 
 	_, err = scheduler.NewJob(
-		gocron.CronJob("0 8 * * *", false), // 8 AM Cyprus time every day
+		gocron.CronJob("0 * * * *", false), // every hour — sends to users whose digest_time matches
 		gocron.NewTask(job.Run),
 	)
 	if err != nil {
@@ -37,30 +37,40 @@ func Start(job *DigestJob) (gocron.Scheduler, error) {
 	}
 
 	scheduler.Start()
-	slog.Info("daily digest cron scheduled", "time", "08:00 Cyprus time")
+	slog.Info("hourly digest cron scheduled", "schedule", "0 * * * * Cyprus time")
 	return scheduler, nil
 }
 
-// Run is called by the scheduler. It sends the digest to all eligible users.
+// Run is called by the scheduler each hour. It sends the digest only to users
+// whose preferred digest_time hour matches the current Cyprus time hour.
 func (j *DigestJob) Run() {
-	sent, failed := j.RunWithStats(context.Background(), "")
-	slog.Info("daily digest complete", "emails_sent", sent, "failed", failed)
+	cyprusNow := time.Now().In(cyprusLocation())
+	currentHour := cyprusNow.Hour()
+	sent, failed := j.RunWithStats(context.Background(), "", currentHour)
+	slog.Info("hourly digest complete", "hour", currentHour, "emails_sent", sent, "failed", failed)
 }
 
-// RunWithStats sends the daily digest and returns counts. filterPharmacyID limits
-// execution to a single pharmacy when non-empty (used by the manual-trigger endpoint).
-func (j *DigestJob) RunWithStats(ctx context.Context, filterPharmacyID string) (sent, failed int) {
-	slog.Info("running daily digest job", "filter_pharmacy_id", filterPharmacyID)
+// RunWithStats sends the daily digest and returns counts.
+// filterPharmacyID limits execution to one pharmacy (manual-trigger endpoint).
+// filterHour, when >= 0, limits to users whose digest_time hour matches (cron path).
+// Pass filterHour = -1 to send regardless of the user's chosen time.
+func (j *DigestJob) RunWithStats(ctx context.Context, filterPharmacyID string, filterHour int) (sent, failed int) {
+	slog.Info("running digest job", "filter_pharmacy_id", filterPharmacyID, "filter_hour", filterHour)
 
 	// ── query all eligible users+pharmacies ──────────────────────────
 	//
 	// We use DISTINCT ON to get the latest risk assessment per batch,
 	// then aggregate counts and totals per user-pharmacy pair.
-	pharmacyFilter := ""
 	args := []any{}
+	pharmacyFilter := ""
 	if filterPharmacyID != "" {
-		pharmacyFilter = "AND p.id = $1"
 		args = append(args, filterPharmacyID)
+		pharmacyFilter = fmt.Sprintf("AND p.id = $%d", len(args))
+	}
+	hourFilter := ""
+	if filterHour >= 0 {
+		args = append(args, filterHour)
+		hourFilter = fmt.Sprintf("AND EXTRACT(HOUR FROM u.digest_time) = $%d", len(args))
 	}
 
 	query := fmt.Sprintf(`
@@ -96,8 +106,9 @@ func (j *DigestJob) RunWithStats(ctx context.Context, filterPharmacyID string) (
 		  AND u.daily_digest_enabled = true
 		  AND p.plan IN ('pro','chain')
 		  %s
+		  %s
 		GROUP BY u.id, u.email, u.full_name, p.id, p.name, p.language
-	`, pharmacyFilter)
+	`, pharmacyFilter, hourFilter)
 
 	rows, err := j.db.Query(ctx, query, args...)
 	if err != nil {

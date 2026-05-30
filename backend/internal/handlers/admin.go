@@ -35,7 +35,7 @@ func (h *AdminHandler) TriggerDigest(c *gin.Context) {
 	pharmacyID := c.Query("pharmacy_id")
 	start := time.Now()
 
-	sent, failed := h.digestJob.RunWithStats(c.Request.Context(), pharmacyID)
+	sent, failed := h.digestJob.RunWithStats(c.Request.Context(), pharmacyID, -1)
 
 	c.JSON(http.StatusOK, gin.H{
 		"sent":        sent,
