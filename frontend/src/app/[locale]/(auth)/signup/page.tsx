@@ -18,31 +18,49 @@ const schema = z.object({
   full_name: z.string().min(2),
   email: z.string().email(),
   password: z.string().min(8, "Password must be at least 8 characters"),
+  acceptTerms: z.literal(true, {
+    errorMap: () => ({
+      message: "You must accept the Privacy Policy and Terms of Service",
+    }),
+  }),
 });
 
 type FormData = z.infer<typeof schema>;
 
 export default function SignupPage() {
   const t = useTranslations("auth");
+  const tSignup = useTranslations("signup");
   const router = useRouter();
   const { locale } = useParams();
+  const lc = (locale as string) ?? "en";
   const { setAuth } = useAuth();
   const [loading, setLoading] = useState(false);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors },
+  } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
+
+  const acceptedTerms = watch("acceptTerms");
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
     try {
-      const res = await apiFetch<{ token: string; user: any; pharmacy: any }>("/auth/signup", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
+      const { acceptTerms, ...rest } = data;
+      const res = await apiFetch<{ token: string; user: any; pharmacy: any }>(
+        "/auth/signup",
+        {
+          method: "POST",
+          body: JSON.stringify({ ...rest, accept_terms: acceptTerms }),
+        }
+      );
       setAuth(res.token, res.user, res.pharmacy);
       toast.success(t("signupSuccess"));
-      router.push(`/${locale}/dashboard`);
+      router.push(`/${lc}/dashboard`);
     } catch (err: any) {
       toast.error(err.message ?? "Signup failed");
     } finally {
@@ -128,10 +146,40 @@ export default function SignupPage() {
               </div>
             </div>
 
+            <div className="flex items-start gap-2 mt-4">
+              <input
+                type="checkbox"
+                id="acceptTerms"
+                {...register("acceptTerms")}
+                className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+              />
+              <label htmlFor="acceptTerms" className="text-sm text-slate-600">
+                {tSignup("acceptTermsPrefix")}{" "}
+                <Link
+                  href={`/${lc}/privacy`}
+                  target="_blank"
+                  className="text-emerald-700 underline hover:text-emerald-800"
+                >
+                  {tSignup("privacyLink")}
+                </Link>{" "}
+                {tSignup("acceptTermsMiddle")}{" "}
+                <Link
+                  href={`/${lc}/terms`}
+                  target="_blank"
+                  className="text-emerald-700 underline hover:text-emerald-800"
+                >
+                  {tSignup("termsLink")}
+                </Link>
+              </label>
+            </div>
+            {errors.acceptTerms && (
+              <p className="text-sm text-red-600 mt-1">{tSignup("acceptTermsRequired")}</p>
+            )}
+
             <button
               type="submit"
-              disabled={loading}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+              disabled={loading || !acceptedTerms}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
@@ -145,7 +193,7 @@ export default function SignupPage() {
 
           <div className="mt-6 text-center text-sm text-slate-500">
             {t("hasAccount")}{" "}
-            <Link href={`/${locale}/login`} className="text-emerald-600 font-medium hover:text-emerald-700">
+            <Link href={`/${lc}/login`} className="text-emerald-600 font-medium hover:text-emerald-700">
               {t("login")}
             </Link>
           </div>

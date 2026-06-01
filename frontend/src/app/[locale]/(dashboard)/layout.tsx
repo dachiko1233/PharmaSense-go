@@ -13,6 +13,7 @@ import {
   Menu, X, Globe
 } from "lucide-react";
 import { toast } from "sonner";
+import Footer from "@/components/layout/Footer";
 
 interface PharmacyOption {
   id: string;
@@ -242,6 +243,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Page content */}
         <main className="flex-1 overflow-y-auto">
           {children}
+          <Footer />
         </main>
       </div>
     </div>

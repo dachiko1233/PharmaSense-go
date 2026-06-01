@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(Stop-Process *)"
+      "PowerShell(Stop-Process *)",
+      "mcp__railway__list_deployments",
+      "mcp__railway__get_logs",
+      "Bash(RAILWAY_CALLER=\"skill:use-railway@1.2.0\" RAILWAY_AGENT_SESSION=\"railway-skill-x\" railway up --help)",
+      "Bash(RAILWAY_CALLER=\"skill:use-railway@1.2.0\" RAILWAY_AGENT_SESSION=\"railway-skill-pharmasense-$\\(date +%s\\)\" railway up ./backend --path-as-root --service backend --detach -m \"feat: per-user digest delivery time — hourly cron filters by preference\")"
     ]
   }
 }

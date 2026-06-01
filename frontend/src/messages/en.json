@@ -41,7 +41,23 @@
     "verifyBanner": "Verify your email to unlock all features.",
     "resetPassword": "Reset Password",
     "sendResetLink": "Send Reset Link",
-    "newPassword": "New Password"
+    "newPassword": "New Password",
+    "loginLegalNote": "By logging in, you confirm acceptance of our",
+    "and": "and"
+  },
+  "signup": {
+    "acceptTermsPrefix": "I accept the",
+    "acceptTermsMiddle": "and",
+    "privacyLink": "Privacy Policy",
+    "termsLink": "Terms of Service",
+    "acceptTermsRequired": "You must accept the Privacy Policy and Terms of Service to continue"
+  },
+  "footer": {
+    "rights": "© 2026 PharmaSense. All rights reserved.",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "cookies": "Cookies",
+    "contact": "Contact"
   },
   "inventory": {
     "title": "Inventory",
@@ -173,5 +189,222 @@
     "chain_admin": "Chain Admin",
     "admin": "Admin",
     "staff": "Staff"
+  },
+  "legal": {
+    "lastUpdated": "Last updated: May 30, 2026"
+  },
+  "privacy": {
+    "title": "Privacy Policy",
+    "intro": "PharmaSense is a Software-as-a-Service product operated from Cyprus that helps licensed pharmacies monitor inventory expiry and reduce waste. This Privacy Policy explains what personal data we collect, how we use it, the lawful bases we rely on, with whom we share it, and the rights you have under the EU General Data Protection Regulation (GDPR) and Cyprus law.",
+    "controller": {
+      "title": "Data Controller",
+      "body": "PharmaSense, Cyprus. For any privacy-related question, you can contact us at support@pharmasense.co. We act as a data controller for account information and as a data processor for the inventory data you upload."
+    },
+    "dataCollected": {
+      "title": "Information We Collect",
+      "intro": "We collect only the information needed to provide and operate the service:",
+      "items": [
+        "Account information: full name, email address, hashed password (bcrypt cost 12) — never stored in plain text.",
+        "Pharmacy information: pharmacy name, license number, city, plan, language preference.",
+        "Inventory data: product names, barcodes, batch numbers, expiry dates, quantities, purchase and selling prices, suppliers, and categories.",
+        "Sales data: actions you record on alerts (discounts, transfers, returns, disposals).",
+        "Payment information: handled by Stripe — we never see or store full card numbers. We retain only Stripe customer and subscription identifiers.",
+        "Optional contact data: phone number, used only if you opt in to SMS alerts.",
+        "Technical data: IP address, browser, operating system, timestamps, and minimal request logs needed to operate the service securely."
+      ]
+    },
+    "legalBasis": {
+      "title": "Legal Basis (GDPR Art. 6)",
+      "intro": "We process your personal data on the following lawful bases:",
+      "items": [
+        "Performance of a contract — to deliver the PharmaSense service you subscribed to.",
+        "Consent — for optional features such as SMS alerts. You can withdraw consent at any time.",
+        "Legal obligation — for invoicing, tax records, and other obligations under Cyprus and EU law.",
+        "Legitimate interest — to keep the service secure, prevent abuse, and improve reliability."
+      ]
+    },
+    "processors": {
+      "title": "Third-Party Processors",
+      "intro": "We share data only with sub-processors necessary to run the service. They are bound by data-processing agreements and appropriate safeguards.",
+      "headers": { "name": "Processor", "purpose": "Purpose", "location": "Location" },
+      "rows": [
+        { "name": "Railway", "purpose": "Application hosting and database", "location": "EU (Frankfurt)" },
+        { "name": "Resend", "purpose": "Transactional email delivery", "location": "EU" },
+        { "name": "Stripe", "purpose": "Payment processing", "location": "EU / US (SCCs)" },
+        { "name": "Twilio", "purpose": "SMS alerts (optional)", "location": "EU / US (SCCs)" }
+      ]
+    },
+    "pharmacyData": {
+      "title": "Pharmacy Inventory Data",
+      "items": [
+        "Inventory data is owned by the pharmacy that uploads it.",
+        "It is never shared with other pharmacies on the platform.",
+        "It is never used to market products to patients or end customers.",
+        "We do NOT process patient or customer data of pharmacies. PharmaSense is not a patient-facing system."
+      ]
+    },
+    "retention": {
+      "title": "Data Retention",
+      "items": [
+        "Active accounts: data is retained for as long as your subscription remains active.",
+        "After cancellation: account and inventory data are deleted within 90 days, unless longer retention is required by law.",
+        "Tax and invoicing records: retained for 7 years as required by Cyprus and EU tax law.",
+        "Backups: residual encrypted backups may persist for up to 35 days before being overwritten."
+      ]
+    },
+    "security": {
+      "title": "Security",
+      "items": [
+        "All traffic is encrypted in transit using HTTPS/TLS 1.2 or higher.",
+        "Data at rest is encrypted with AES-256 on managed Railway storage.",
+        "Passwords are hashed with bcrypt (cost factor 12) — we cannot recover them.",
+        "Session tokens are JWTs with a 24-hour lifetime.",
+        "The application enforces strict multi-tenant isolation: each pharmacy can access only its own data."
+      ]
+    },
+    "rights": {
+      "title": "Your GDPR Rights",
+      "intro": "Under the GDPR, you have the following rights regarding your personal data:",
+      "items": [
+        "Right of access — obtain a copy of the personal data we hold about you.",
+        "Right to rectification — correct inaccurate or incomplete information.",
+        "Right to erasure — request deletion of your personal data (\"right to be forgotten\").",
+        "Right to restriction — limit how we process your data in certain cases.",
+        "Right to data portability — receive your data in a structured, machine-readable format.",
+        "Right to object — object to processing based on legitimate interest.",
+        "Right to withdraw consent — at any time, where consent is the legal basis.",
+        "Right to lodge a complaint — with the Office of the Commissioner for Personal Data Protection of Cyprus."
+      ],
+      "exercise": "To exercise any of these rights, email support@pharmasense.co. We respond within 30 days."
+    },
+    "cookies": {
+      "title": "Cookies",
+      "body": "We use only strictly necessary cookies (session token, locale preference). We do not use tracking, advertising, or analytics cookies, and no cookie consent banner is required under GDPR/ePrivacy. See our Cookie Policy for details."
+    },
+    "transfers": {
+      "title": "International Transfers",
+      "body": "Where data is processed outside the European Economic Area (e.g. by Stripe or Twilio US entities), we rely on the European Commission's Standard Contractual Clauses (SCCs) and equivalent safeguards to ensure your data continues to be protected."
+    },
+    "changes": {
+      "title": "Changes to This Policy",
+      "body": "We may update this Privacy Policy from time to time. Material changes will be notified to active users by email at least 30 days before they take effect."
+    },
+    "contact": {
+      "title": "Contact",
+      "body": "Questions, requests, or complaints about privacy can be sent to support@pharmasense.co."
+    }
+  },
+  "terms": {
+    "title": "Terms of Service",
+    "intro": "These Terms of Service (\"Terms\") govern your access to and use of PharmaSense. By creating an account or using the service, you agree to be bound by these Terms.",
+    "acceptance": {
+      "title": "1. Acceptance of Terms",
+      "body": "By signing up for or using PharmaSense, you confirm that you have read, understood, and agree to these Terms and our Privacy Policy. If you do not agree, you may not use the service."
+    },
+    "service": {
+      "title": "2. Service Description",
+      "body": "PharmaSense is a Software-as-a-Service platform that helps licensed pharmacies monitor inventory expiry, generate risk alerts, record mitigation actions (discounts, transfers, returns, disposals), and report on waste reduction."
+    },
+    "eligibility": {
+      "title": "3. Eligibility",
+      "items": [
+        "You must be at least 18 years old.",
+        "You must represent a licensed pharmacy operating in Cyprus or the European Union.",
+        "You must provide accurate, complete, and current information when creating an account."
+      ]
+    },
+    "account": {
+      "title": "4. Account Responsibilities",
+      "items": [
+        "Keep your password confidential and choose a strong password.",
+        "Do not share your account with anyone — each user must have their own credentials.",
+        "Notify us immediately at support@pharmasense.co of any unauthorized access or suspected breach.",
+        "You are responsible for all activity that occurs under your account."
+      ]
+    },
+    "acceptableUse": {
+      "title": "5. Acceptable Use",
+      "intro": "You agree NOT to:",
+      "items": [
+        "Resell, sublicense, or otherwise commercialize the service without our written consent.",
+        "Scrape, crawl, or use automated tools to extract data from the platform.",
+        "Reverse-engineer, decompile, or attempt to derive the source code.",
+        "Use the service for any unlawful purpose or in violation of pharmacy regulations.",
+        "Interfere with or disrupt the integrity or performance of the service."
+      ]
+    },
+    "billing": {
+      "title": "6. Subscription & Billing",
+      "items": [
+        "Plans: Free, Pro (€29/month), Chain (€99/month).",
+        "Billing cycle: monthly, with automatic renewal at the start of each cycle.",
+        "Payments are processed by Stripe. By subscribing, you authorize recurring charges to your payment method.",
+        "Refund policy: a 14-day refund is available for new subscriptions if you contact us within 14 days of the initial charge.",
+        "Cancellation: you may cancel at any time. Cancellation takes effect at the end of the current billing cycle; no pro-rated refunds for partial months."
+      ]
+    },
+    "ip": {
+      "title": "7. Intellectual Property",
+      "body": "All source code, design, documentation, trademarks, and brand assets of PharmaSense are owned by us or our licensors. You may not copy, modify, or distribute them without written permission. The inventory and operational data you upload remain your property."
+    },
+    "dataOwnership": {
+      "title": "8. Data Ownership and Processing",
+      "body": "You retain full ownership of all data you upload. PharmaSense acts as a data processor on your behalf and uses your data solely to provide the service, as described in our Privacy Policy."
+    },
+    "availability": {
+      "title": "9. Service Availability",
+      "body": "We target 99.5% monthly uptime but do not guarantee uninterrupted availability. We may perform scheduled maintenance and will give reasonable notice where practical."
+    },
+    "liability": {
+      "title": "10. Limitation of Liability",
+      "body": "To the maximum extent permitted by law, our total aggregate liability arising out of or in connection with the service is limited to the amount you paid us in the three (3) months preceding the event giving rise to the claim. We are not liable for indirect, incidental, special, consequential, or punitive damages."
+    },
+    "disclaimer": {
+      "title": "11. Disclaimer",
+      "body": "The service is provided \"AS IS\" and \"AS AVAILABLE\". We make no warranties, express or implied, regarding fitness for a particular purpose, merchantability, or non-infringement. PharmaSense is a support tool, not a replacement for professional pharmacy judgement. You are responsible for verifying each alert and for complying with Cyprus pharmaceutical regulations independently. We are not liable for inventory decisions, expired products sold, regulatory issues, or losses arising from your reliance on the service."
+    },
+    "indemnification": {
+      "title": "12. Indemnification",
+      "body": "You agree to indemnify and hold PharmaSense, its affiliates, and personnel harmless from any claims, damages, or expenses arising from your misuse of the service, violation of these Terms, or violation of any law or third-party right."
+    },
+    "termination": {
+      "title": "13. Termination",
+      "body": "We may suspend or terminate your account with 30 days' notice for material violations of these Terms or applicable law. We may also terminate immediately in cases of fraud, security risk, or legal requirement. You may cancel at any time as described above."
+    },
+    "modifications": {
+      "title": "14. Modifications",
+      "body": "We may update these Terms from time to time. Material changes will be notified to active users by email at least 30 days before they take effect. Continued use of the service after the effective date constitutes acceptance."
+    },
+    "governingLaw": {
+      "title": "15. Governing Law",
+      "body": "These Terms are governed by the laws of the Republic of Cyprus, without regard to conflict-of-law principles."
+    },
+    "disputes": {
+      "title": "16. Disputes",
+      "body": "Any dispute arising out of or in connection with these Terms shall be submitted to the exclusive jurisdiction of the competent courts of Nicosia, Cyprus."
+    },
+    "contact": {
+      "title": "17. Contact",
+      "body": "For legal questions, contact legal@pharmasense.co. For general support, contact support@pharmasense.co."
+    }
+  },
+  "cookies": {
+    "title": "Cookie Policy",
+    "intro": "PharmaSense uses only strictly necessary cookies required to operate the service. We do not use tracking, advertising, or analytics cookies.",
+    "tableTitle": "Essential cookies we use",
+    "headers": { "name": "Cookie Name", "purpose": "Purpose", "duration": "Duration" },
+    "rows": [
+      { "name": "session_token", "purpose": "Keeps you logged in to your account", "duration": "24 hours" },
+      { "name": "locale", "purpose": "Remembers your language preference (EN/EL)", "duration": "1 year" }
+    ],
+    "doNotUseTitle": "We do NOT use",
+    "doNotUse": [
+      "Tracking cookies",
+      "Third-party advertising cookies",
+      "Analytics cookies (no Google Analytics, no Mixpanel, no Hotjar)"
+    ],
+    "banner": "Because we use only strictly necessary cookies, no cookie consent banner is required under GDPR or the ePrivacy Directive.",
+    "more": "For more information about how we handle data, please see our",
+    "privacyLink": "Privacy Policy"
   }
 }

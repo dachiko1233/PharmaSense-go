@@ -29,12 +29,18 @@ type signupRequest struct {
 	FullName      string `json:"full_name"      binding:"required"`
 	Email         string `json:"email"          binding:"required,email"`
 	Password      string `json:"password"       binding:"required,min=8"`
+	AcceptTerms   bool   `json:"accept_terms"`
 }
 
 func (h *AuthHandler) Signup(c *gin.Context) {
 	var req signupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !req.AcceptTerms {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "you must accept the Privacy Policy and Terms of Service"})
 		return
 	}
 

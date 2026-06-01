@@ -108,8 +108,8 @@ func (s *AuthService) Signup(ctx context.Context, pharmacyName, licenseNumber, c
 	// Create user
 	var user domain.User
 	err = tx.QueryRow(ctx, `
-		INSERT INTO users (default_pharmacy_id, email, password_hash, full_name, email_verification_token)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO users (default_pharmacy_id, email, password_hash, full_name, email_verification_token, terms_accepted_at)
+		VALUES ($1, $2, $3, $4, $5, NOW())
 		RETURNING id, email, full_name, default_pharmacy_id, email_verified, sms_enabled, is_active, created_at, email_verification_token
 	`, pharmacy.ID, email, hash, fullName, verificationToken).Scan(
 		&user.ID, &user.Email, &user.FullName, &user.DefaultPharmacyID,

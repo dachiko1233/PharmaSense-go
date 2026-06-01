@@ -20,6 +20,7 @@ type FormData = z.infer<typeof schema>;
 
 export default function LoginPage() {
   const t = useTranslations("auth");
+  const tFooter = useTranslations("footer");
   const router = useRouter();
   const params = useParams();
   const locale = params.locale as string;
@@ -112,6 +113,18 @@ export default function LoginPage() {
               {t("signup")}
             </Link>
           </div>
+
+          <p className="mt-4 text-center text-xs text-slate-500">
+            {t("loginLegalNote")}{" "}
+            <Link href={`/${locale}/privacy`} className="text-emerald-700 underline hover:text-emerald-800">
+              {tFooter("privacy")}
+            </Link>{" "}
+            {t("and")}{" "}
+            <Link href={`/${locale}/terms`} className="text-emerald-700 underline hover:text-emerald-800">
+              {tFooter("terms")}
+            </Link>
+            .
+          </p>
 
           <div className="mt-6 pt-6 border-t border-slate-200">
             <p className="text-xs text-slate-400 text-center mb-3">Demo credentials</p>
