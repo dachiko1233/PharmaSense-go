@@ -38,7 +38,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 		MaxAge:           12 * time.Hour,
 	}
 
-	api := r.Group("/api/v1")
+	//api := r.Group("/api/v1")
 	api.Use(cors.New(corsConfig))
 	r.Use(cors.New(corsConfig))
 
