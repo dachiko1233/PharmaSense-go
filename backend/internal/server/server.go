@@ -38,7 +38,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 		MaxAge:           12 * time.Hour,
 	}
 
-	//api := r.Group("/api/v1")
+	api := r.Group("/api/v1")
 	api.Use(cors.New(corsConfig))
 	r.Use(cors.New(corsConfig))
 
@@ -80,12 +80,12 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	// Suppress unused variable warning
 	_ = smsSvc
 
-	api := r.Group("/api/v1")
+	// api := r.Group("/api/v1")
 
 	// Health check — critical for Railway
-	api.GET("/healthz", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
+	// api.GET("/healthz", func(c *gin.Context) {
+	// 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	// })
 
 	// Auth routes (public)
 	authRateLimit := middleware.RateLimit(10, 0.5) // 10 burst, 1 req/2s
