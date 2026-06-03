@@ -38,27 +38,9 @@ func main() {
 		slog.Error("database connection failed", "error", err)
 		os.Exit(1)
 	}
-
-	//i add this
-	dbURL := cfg.DatabaseURL
-	if !strings.Contains(dbURL, "pool_max_conns") {
-		if strings.Contains(dbURL, "?") {
-			dbURL += "&pool_max_conns=25"
-		} else {
-			dbURL += "?pool_max_conns=25"
-		}
-	}
-
-	pool, err := db.NewPool(ctx, dbURL)
-	if err != nil {
-		slog.Error("database connection failed", "error", err)
-		os.Exit(1)
-	}
-
-
 	defer pool.Close()
 
-	slog.Info("database connected", "max_conns", 25)
+	slog.Info("database connected")
 
 	// One-time risk recalculation on startup (set RECALCULATE_RISKS_ON_START=true, redeploy once, then unset)
 	if os.Getenv("RECALCULATE_RISKS_ON_START") == "true" {
@@ -137,9 +119,6 @@ func recalculateAllRisks(ctx context.Context, pool *pgxpool.Pool) error {
 	rows.Close()
 
 	today := time.Now().UTC().Truncate(24 * time.Hour)
-
-	//i add this
-	var copyRows [][]interface{}
 	for _, pharmacyID := range pharmacyIDs {
 		batchRows, err := pool.Query(ctx, `
 			SELECT ib.id, ib.expiry_date, ib.current_quantity, ib.purchase_price,
@@ -175,6 +154,8 @@ func recalculateAllRisks(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 		batchRows.Close()
 
+		//fmfm
+
 		for _, b := range batches {
 			result := services.CalculateRisk(services.RiskInput{
 				CurrentQuantity: b.currentQty,
@@ -183,29 +164,15 @@ func recalculateAllRisks(ctx context.Context, pool *pgxpool.Pool) error {
 				PurchasePrice:   b.purchasePrice,
 				Today:           today,
 			})
-
-			// ნაცვლად სათითაოდ Exec-ის გაშვებისა, მონაცემებს ვინახავთ მეხსიერებაში
-			copyRows = append(copyRows, []interface{}{
-				b.id, pharmacyID, result.RiskLevel, result.DaysUntilExpiry, b.avgDailySales,
-				result.ExpectedSales, result.EstimatedSurplus, result.EstimatedLoss, result.SuggestedDiscountPct,
-			})
-		
+			_, _ = pool.Exec(ctx, `
+				INSERT INTO risk_assessments
+				  (batch_id, pharmacy_id, risk_level, days_until_expiry, avg_daily_sales,
+				   expected_sales, estimated_surplus, estimated_loss, suggested_discount_percent)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			`, b.id, pharmacyID, result.RiskLevel, result.DaysUntilExpiry, b.avgDailySales,
+				result.ExpectedSales, result.EstimatedSurplus, result.EstimatedLoss, result.SuggestedDiscountPct)
 		}
-		// slog.Info("risk recalculated for pharmacy", "pharmacy_id", pharmacyID, "batches", len(batches))
-
-		if len(copyRows) > 0 {
-			slog.Info("executing bulk insert for risk assessments", "total_rows", len(copyRows))
-			_, err = pool.CopyFrom(
-				ctx,
-				pgx.Identifier{"risk_assessments"},
-				[]string{"batch_id", "pharmacy_id", "risk_level","days_until_expiry", "avg_daily_sales", "expected_sales", "estimated_surplus", "estimated_loss", "suggested_discount_percent"},
-				pgx.CopyFromRows(copyRows),
-			)
-			if err != nil {
-				return fmt.Errorf("bulk insert failed: %w", err)
-			}
-		}
-		return nil
+		slog.Info("risk recalculated for pharmacy", "pharmacy_id", pharmacyID, "batches", len(batches))
 	}
-	
+	return nil
 }
