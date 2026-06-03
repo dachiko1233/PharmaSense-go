@@ -24,7 +24,10 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.Use(middleware.SlogLogger())
+	//r.Use(middleware.SlogLogger())
+	r.GET("/api/v1/healthz", func(c *gin.Content){
+		c.JSON(http.StatusOK, gin.H{"status" : "ok"})
+	})
 
 	corsConfig := cors.Config{
 		AllowOrigins:     cfg.FrontendOrigins,
@@ -34,6 +37,9 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}
+
+	api := r.Group("/api/v1")
+	api.Use(cors.New(corsConfig))
 	r.Use(cors.New(corsConfig))
 
 	// Services
@@ -116,9 +122,13 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 		pharmacyID := middleware.GetPharmacyID(c)
 		rows, err := db.Query(c.Request.Context(), `
 			SELECT DISTINCT p.id, p.name, p.category, p.manufacturer, p.requires_prescription, p.created_at
-			FROM products p
-			JOIN inventory_batches ib ON ib.product_id = p.id
-			WHERE ib.pharmacy_id = $1
+			FROM products p{
+			WHERE EXISTS(
+				SELECT 1 FROM iventory_batches ib 
+				WHERE ib.porduct_id = p.id AND ib.pharmacy_id $1
+			)
+			// JOIN inventory_batches ib ON ib.product_id = p.id
+			// WHERE ib.pharmacy_id = $1
 			ORDER BY p.name LIMIT 200
 		`, pharmacyID)
 		if err != nil {
