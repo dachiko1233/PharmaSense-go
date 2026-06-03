@@ -25,7 +25,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	r := gin.New()
 	r.Use(gin.Recovery())
 	//r.Use(middleware.SlogLogger())
-	r.GET("/api/v1/healthz", func(c *gin.Content){
+	r.GET("/api/v1/healthz", func(c *gin.Context){
 		c.JSON(http.StatusOK, gin.H{"status" : "ok"})
 	})
 
