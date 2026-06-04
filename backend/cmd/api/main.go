@@ -154,8 +154,6 @@ func recalculateAllRisks(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 		batchRows.Close()
 
-		//fmfm
-
 		for _, b := range batches {
 			result := services.CalculateRisk(services.RiskInput{
 				CurrentQuantity: b.currentQty,

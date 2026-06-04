@@ -25,9 +25,6 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	r := gin.New()
 	r.Use(gin.Recovery())
 	//r.Use(middleware.SlogLogger())
-	r.GET("/api/v1/healthz", func(c *gin.Context){
-		c.JSON(http.StatusOK, gin.H{"status" : "ok"})
-	})
 
 	corsConfig := cors.Config{
 		AllowOrigins:     cfg.FrontendOrigins,
@@ -40,6 +37,12 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 
 	api := r.Group("/api/v1")
 	api.Use(cors.New(corsConfig))
+
+	// Health check — critical for Railway
+	api.GET("/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
 	r.Use(cors.New(corsConfig))
 
 	// Services
@@ -82,11 +85,6 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 
 	// api := r.Group("/api/v1")
 
-	// Health check — critical for Railway
-	// api.GET("/healthz", func(c *gin.Context) {
-	// 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	// })
-
 	// Auth routes (public)
 	authRateLimit := middleware.RateLimit(10, 0.5) // 10 burst, 1 req/2s
 	auth := api.Group("/auth")
@@ -122,13 +120,11 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 		pharmacyID := middleware.GetPharmacyID(c)
 		rows, err := db.Query(c.Request.Context(), `
 			SELECT DISTINCT p.id, p.name, p.category, p.manufacturer, p.requires_prescription, p.created_at
-			FROM products p{
+			FROM products p
 			WHERE EXISTS(
-				SELECT 1 FROM iventory_batches ib 
-				WHERE ib.porduct_id = p.id AND ib.pharmacy_id $1
+				SELECT 1 FROM inventory_batches ib
+				WHERE ib.product_id = p.id AND ib.pharmacy_id = $1
 			)
-			// JOIN inventory_batches ib ON ib.product_id = p.id
-			// WHERE ib.pharmacy_id = $1
 			ORDER BY p.name LIMIT 200
 		`, pharmacyID)
 		if err != nil {
