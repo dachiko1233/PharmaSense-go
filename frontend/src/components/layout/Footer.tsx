@@ -23,7 +23,10 @@ export default function Footer() {
           <Link href={`/${lc}/cookies`} className="hover:text-emerald-700">
             {t("cookies")}
           </Link>
-          <a href="mailto:support@pharmasense.co" className="hover:text-emerald-700">
+          <a
+            href="mailto:pharmasense4@gmail.com"
+            className="hover:text-emerald-700"
+          >
             {t("contact")}
           </a>
         </div>
