@@ -236,8 +236,22 @@ func recalculateForPharmacy(ctx context.Context, db *pgxpool.Pool, pharmacyID uu
 	}
 	rows.Close()
 
-	count := 0
-	for _, b := range batches {
+	if len(batches) == 0 {
+		return 0, nil
+	}
+
+	batchIDs := make([]string, len(batches))
+	pharmacyIDs := make([]string, len(batches))
+	riskLevels := make([]string, len(batches))
+	daysUntilExpiry := make([]int, len(batches))
+	avgDailySales := make([]float64, len(batches))
+	expectedSales := make([]int, len(batches))
+	estimatedSurplus := make([]int, len(batches))
+	estimatedLoss := make([]float64, len(batches))
+	suggestedDiscount := make([]int, len(batches))
+
+	pharmacyIDStr := pharmacyID.String()
+	for i, b := range batches {
 		result := services.CalculateRisk(services.RiskInput{
 			CurrentQuantity: b.currentQty,
 			ExpiryDate:      b.expiryDate,
@@ -246,16 +260,44 @@ func recalculateForPharmacy(ctx context.Context, db *pgxpool.Pool, pharmacyID uu
 			Today:           today,
 		})
 
-		if _, err := db.Exec(ctx, `
-			INSERT INTO risk_assessments
-			  (batch_id, pharmacy_id, risk_level, days_until_expiry, avg_daily_sales,
-			   expected_sales, estimated_surplus, estimated_loss, suggested_discount_percent)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-		`, b.id, pharmacyID, result.RiskLevel, result.DaysUntilExpiry, b.avgDailySales,
-			result.ExpectedSales, result.EstimatedSurplus, result.EstimatedLoss, result.SuggestedDiscountPct); err == nil {
-			count++
-		}
+		batchIDs[i] = b.id.String()
+		pharmacyIDs[i] = pharmacyIDStr
+		riskLevels[i] = result.RiskLevel
+		daysUntilExpiry[i] = result.DaysUntilExpiry
+		avgDailySales[i] = b.avgDailySales
+		expectedSales[i] = result.ExpectedSales
+		estimatedSurplus[i] = result.EstimatedSurplus
+		estimatedLoss[i] = result.EstimatedLoss
+		suggestedDiscount[i] = result.SuggestedDiscountPct
 	}
 
-	return count, nil
+	// Single batched UPSERT (one row per batch) instead of one INSERT per batch —
+	// avoids N sequential round-trips and unbounded table growth.
+	tag, err := db.Exec(ctx, `
+		INSERT INTO risk_assessments
+		  (batch_id, pharmacy_id, risk_level, days_until_expiry, avg_daily_sales,
+		   expected_sales, estimated_surplus, estimated_loss, suggested_discount_percent)
+		SELECT batch_id::uuid, pharmacy_id::uuid, risk_level, days_until_expiry, avg_daily_sales,
+		       expected_sales, estimated_surplus, estimated_loss, suggested_discount_percent
+		FROM unnest(
+			$1::text[], $2::text[], $3::text[], $4::int[], $5::float8[],
+			$6::int[], $7::int[], $8::float8[], $9::int[]
+		) AS t(batch_id, pharmacy_id, risk_level, days_until_expiry, avg_daily_sales,
+		       expected_sales, estimated_surplus, estimated_loss, suggested_discount_percent)
+		ON CONFLICT (batch_id) DO UPDATE SET
+		  risk_level = EXCLUDED.risk_level,
+		  days_until_expiry = EXCLUDED.days_until_expiry,
+		  avg_daily_sales = EXCLUDED.avg_daily_sales,
+		  expected_sales = EXCLUDED.expected_sales,
+		  estimated_surplus = EXCLUDED.estimated_surplus,
+		  estimated_loss = EXCLUDED.estimated_loss,
+		  suggested_discount_percent = EXCLUDED.suggested_discount_percent,
+		  calculated_at = NOW()
+	`, batchIDs, pharmacyIDs, riskLevels, daysUntilExpiry, avgDailySales,
+		expectedSales, estimatedSurplus, estimatedLoss, suggestedDiscount)
+	if err != nil {
+		return 0, err
+	}
+
+	return int(tag.RowsAffected()), nil
 }
