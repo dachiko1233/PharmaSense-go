@@ -158,6 +158,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	protected.GET("/inventory", invH.List)
 	protected.POST("/inventory", invH.Create)
 	protected.DELETE("/inventory/:id", invH.Delete)
+	protected.DELETE("/inventory", invH.DeleteAll)
 
 	// CSV import — Pro plan required
 	proGroup := protected.Group("/")

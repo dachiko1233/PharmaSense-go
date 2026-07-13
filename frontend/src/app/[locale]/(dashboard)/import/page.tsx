@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { apiUrl } from "@/lib/api/client";
@@ -14,6 +15,7 @@ interface ImportResult {
 
 export default function ImportPage() {
   const t = useTranslations("import");
+  const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -56,6 +58,11 @@ export default function ImportPage() {
       setResult(data);
       if (data.imported > 0) {
         toast.success(`${t("success")}: ${data.imported} batches imported`);
+        queryClient.invalidateQueries({ queryKey: ["inventory"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+        queryClient.invalidateQueries({ queryKey: ["timeline"] });
+        queryClient.invalidateQueries({ queryKey: ["alerts-critical"] });
+        queryClient.invalidateQueries({ queryKey: ["alerts"] });
       }
     } catch (err: any) {
       toast.error(err.message ?? "Import failed");

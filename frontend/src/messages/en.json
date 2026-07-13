@@ -76,7 +76,11 @@
     "risk": "Risk",
     "supplier": "Supplier",
     "actions": "Actions",
-    "noInventory": "No inventory items found"
+    "noInventory": "No inventory items found",
+    "deleteAll": "Delete All",
+    "deleteAllConfirm": "Delete ALL inventory batches for this pharmacy, regardless of any search or filter currently applied? Batches with recorded sales will be zeroed out instead of removed. This cannot be undone.",
+    "deleteAllSuccess": "Inventory cleared: {deleted} deleted, {zeroed} zeroed out",
+    "deleteAllFailed": "Failed to delete inventory"
   },
   "alerts": {
     "title": "Alerts",

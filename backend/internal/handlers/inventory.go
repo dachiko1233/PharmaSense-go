@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"pharmasense/internal/middleware"
@@ -199,6 +201,60 @@ func (h *InventoryHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+}
+
+// ── Delete All ───────────────────────────────────────────────────────────────
+
+// DeleteAll wipes every batch for the pharmacy. Batches with recorded sales
+// history can't be hard-deleted (sales.batch_id has no ON DELETE CASCADE),
+// so those are zeroed out instead of removed — same fallback used by the
+// dispose alert action.
+func (h *InventoryHandler) DeleteAll(c *gin.Context) {
+	pharmacyID := middleware.GetPharmacyID(c)
+
+	rows, err := h.db.Query(c.Request.Context(),
+		`SELECT id FROM inventory_batches WHERE pharmacy_id = $1`, pharmacyID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load inventory"})
+		return
+	}
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load inventory"})
+		return
+	}
+
+	deleted, zeroed := 0, 0
+	for _, id := range ids {
+		tag, err := h.db.Exec(c.Request.Context(),
+			`DELETE FROM inventory_batches WHERE id = $1 AND pharmacy_id = $2`, id, pharmacyID)
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+				if _, zErr := h.db.Exec(c.Request.Context(),
+					`UPDATE inventory_batches SET current_quantity = 0, updated_at = NOW() WHERE id = $1 AND pharmacy_id = $2`,
+					id, pharmacyID,
+				); zErr == nil {
+					zeroed++
+				}
+				continue
+			}
+			continue
+		}
+		if tag.RowsAffected() > 0 {
+			deleted++
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"deleted": deleted, "zeroed": zeroed, "total": len(ids)})
 }
 
 // ── CSV Import ────────────────────────────────────────────────────────────────
