@@ -59,6 +59,8 @@ export default function AlertsPage() {
     onSuccess: () => {
       toast.success(t("actionRecorded"));
       queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: () => toast.error("Action failed"),
   });

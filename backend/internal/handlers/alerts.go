@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"pharmasense/internal/middleware"
@@ -127,6 +129,28 @@ func (h *AlertHandler) Action(c *gin.Context) {
 	).Scan(&currentQty, &purchasePrice)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": "batch not found"})
+		return
+	}
+
+	if strings.EqualFold(req.ActionType, "dispose") {
+		tag, err := h.db.Exec(c.Request.Context(),
+			`DELETE FROM inventory_batches WHERE id = $1 AND pharmacy_id = $2`,
+			batchID, pharmacyID,
+		)
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+				c.JSON(http.StatusConflict, gin.H{"error": "cannot dispose: this batch has recorded sales history"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to dispose batch"})
+			return
+		}
+		if tag.RowsAffected() == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "batch not found"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "batch disposed and removed from inventory"})
 		return
 	}
 
