@@ -101,6 +101,12 @@ export interface AlertAction {
   notes?: string;
 }
 
+export interface Subscription {
+  plan: "free" | "pro" | "chain";
+  subscription_status?: string;
+  subscription_current_period_end?: string;
+}
+
 export interface NotificationSettings {
   email: string;
   full_name: string;

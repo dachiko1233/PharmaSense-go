@@ -7,6 +7,7 @@
     "import": "CSV Import",
     "chain": "Chain Overview",
     "settings": "Settings",
+    "billing": "Billing",
     "logout": "Log out"
   },
   "dashboard": {
@@ -184,6 +185,54 @@
     "free": "Free",
     "pro": "Pro",
     "chain": "Chain"
+  },
+  "billing": {
+    "title": "Billing",
+    "subtitle": "Manage your subscription plan",
+    "currentPlan": "Current Plan",
+    "status": "Status",
+    "renewsOn": "Renews on {date}",
+    "manageBilling": "Manage Billing",
+    "upgrade": "Upgrade",
+    "currentPlanBadge": "Current plan",
+    "upgradeSuccess": "Subscription updated successfully",
+    "upgradeCanceled": "Checkout canceled",
+    "upgradeFailed": "Failed to start checkout",
+    "portalFailed": "Failed to open billing portal",
+    "perMonth": "/mo",
+    "plans": {
+      "free": {
+        "name": "Free",
+        "price": "€0",
+        "features": [
+          "1 pharmacy",
+          "100 inventory items",
+          "No SMS alerts",
+          "No daily digest"
+        ]
+      },
+      "pro": {
+        "name": "Pro",
+        "price": "€29",
+        "features": [
+          "1 pharmacy",
+          "Unlimited inventory",
+          "SMS alerts",
+          "Daily email digest"
+        ]
+      },
+      "chain": {
+        "name": "Chain",
+        "price": "€99",
+        "features": [
+          "Up to 10 pharmacies",
+          "Unlimited inventory",
+          "SMS alerts",
+          "Daily email digest",
+          "Chain-wide dashboard"
+        ]
+      }
+    }
   },
   "role": {
     "chain_admin": "Chain Admin",

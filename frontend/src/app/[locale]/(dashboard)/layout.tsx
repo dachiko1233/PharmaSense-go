@@ -9,7 +9,7 @@ import { apiFetch } from "@/lib/api/client";
 import { cn, planBadgeClass } from "@/lib/utils";
 import {
   LayoutDashboard, Package, Bell, FileText, Upload,
-  Network, Settings, LogOut, ChevronDown,
+  Network, Settings, CreditCard, LogOut, ChevronDown,
   Menu, X, Globe
 } from "lucide-react";
 import { toast } from "sonner";
@@ -87,6 +87,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { href: `/${locale}/reports`, label: t("reports"), icon: FileText },
     { href: `/${locale}/import`, label: t("import"), icon: Upload },
     ...(role === "chain_admin" ? [{ href: `/${locale}/chain`, label: t("chain"), icon: Network }] : []),
+    { href: `/${locale}/billing`, label: t("billing"), icon: CreditCard },
     { href: `/${locale}/settings`, label: t("settings"), icon: Settings },
   ];
 
