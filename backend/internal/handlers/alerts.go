@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -9,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"pharmasense/internal/middleware"
@@ -133,24 +131,43 @@ func (h *AlertHandler) Action(c *gin.Context) {
 	}
 
 	if strings.EqualFold(req.ActionType, "dispose") {
-		tag, err := h.db.Exec(c.Request.Context(),
-			`DELETE FROM inventory_batches WHERE id = $1 AND pharmacy_id = $2`,
+		// Zero out the remaining stock rather than hard-deleting the row:
+		// a batch that already has sales recorded against it can't be
+		// deleted (sales.batch_id has no ON DELETE CASCADE), and that's the
+		// common case in practice — most expired batches sold some units
+		// before the rest expired. Zeroing current_quantity always
+		// succeeds and already removes the batch from Inventory/Alerts,
+		// since both list it only where current_quantity > 0.
+		tx, err := h.db.Begin(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start transaction"})
+			return
+		}
+		defer tx.Rollback(c.Request.Context())
+
+		_, err = tx.Exec(c.Request.Context(),
+			`UPDATE inventory_batches SET current_quantity = 0, updated_at = NOW() WHERE id = $1 AND pharmacy_id = $2`,
 			batchID, pharmacyID,
 		)
 		if err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-				c.JSON(http.StatusConflict, gin.H{"error": "cannot dispose: this batch has recorded sales history"})
-				return
-			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to dispose batch"})
 			return
 		}
-		if tag.RowsAffected() == 0 {
-			c.JSON(http.StatusNotFound, gin.H{"error": "batch not found"})
+
+		if _, err := tx.Exec(c.Request.Context(), `
+			INSERT INTO alert_actions (batch_id, pharmacy_id, user_id, action_type, quantity, notes)
+			VALUES ($1, $2, $3, 'dispose', $4, $5)
+		`, batchID, pharmacyID, userID, currentQty, req.Notes); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to record action"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "batch disposed and removed from inventory"})
+
+		if err := tx.Commit(c.Request.Context()); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to commit"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "batch disposed and removed from inventory", "quantity": currentQty})
 		return
 	}
 
