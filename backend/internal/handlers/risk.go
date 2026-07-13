@@ -201,17 +201,16 @@ func (h *RiskHandler) Timeline(c *gin.Context) {
 func recalculateForPharmacy(ctx context.Context, db *pgxpool.Pool, pharmacyID uuid.UUID) (int, error) {
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 
+	// LEFT JOIN + GROUP BY instead of a per-row correlated subquery: one pass
+	// over sales instead of one subquery execution per batch (was the main
+	// cost of recalculation on pharmacies with a large sales history).
 	rows, err := db.Query(ctx, `
 		SELECT ib.id, ib.expiry_date, ib.current_quantity, ib.purchase_price,
-		       COALESCE(
-		         (SELECT SUM(s.quantity)::float / 90.0
-		          FROM sales s
-		          WHERE s.batch_id = ib.id
-		            AND s.sale_date >= $2::date - 90),
-		         0.5
-		       ) as avg_daily_sales
+		       COALESCE(SUM(s.quantity)::float / 90.0, 0.5) as avg_daily_sales
 		FROM inventory_batches ib
+		LEFT JOIN sales s ON s.batch_id = ib.id AND s.sale_date >= $2::date - 90
 		WHERE ib.pharmacy_id = $1
+		GROUP BY ib.id, ib.expiry_date, ib.current_quantity, ib.purchase_price
 	`, pharmacyID, today)
 	if err != nil {
 		return 0, err
