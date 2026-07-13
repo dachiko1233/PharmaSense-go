@@ -22,7 +22,7 @@ func NewDigestJob(db *pgxpool.Pool, email *notifications.EmailService, appURL st
 	return &DigestJob{db: db, email: email, appURL: appURL}
 }
 
-func Start(job *DigestJob) (gocron.Scheduler, error) {
+func Start(job *DigestJob, expiryJob *ExpiryCleanupJob) (gocron.Scheduler, error) {
 	scheduler, err := gocron.NewScheduler(gocron.WithLocation(cyprusLocation()))
 	if err != nil {
 		return nil, fmt.Errorf("create scheduler: %w", err)
@@ -36,8 +36,17 @@ func Start(job *DigestJob) (gocron.Scheduler, error) {
 		return nil, fmt.Errorf("schedule digest job: %w", err)
 	}
 
+	_, err = scheduler.NewJob(
+		gocron.CronJob("0 2 * * *", false), // once a day at 2am — purge batches expired 7+ days
+		gocron.NewTask(expiryJob.Run),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("schedule expiry cleanup job: %w", err)
+	}
+
 	scheduler.Start()
 	slog.Info("hourly digest cron scheduled", "schedule", "0 * * * * Cyprus time")
+	slog.Info("daily expiry cleanup cron scheduled", "schedule", "0 2 * * * Cyprus time")
 	return scheduler, nil
 }
 

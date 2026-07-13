@@ -52,8 +52,9 @@ func main() {
 	// Start cron jobs (unless DISABLE_CRON=true for multi-instance scale-out)
 	emailSvc := notifications.NewEmailService(cfg.ResendAPIKey, cfg.ResendFromEmail)
 	digestJob := cron.NewDigestJob(pool, emailSvc, cfg.AppURL)
+	expiryCleanupJob := cron.NewExpiryCleanupJob(pool)
 	if !cfg.DisableCron {
-		scheduler, err := cron.Start(digestJob)
+		scheduler, err := cron.Start(digestJob, expiryCleanupJob)
 		if err != nil {
 			slog.Warn("cron startup failed", "error", err)
 		} else {
