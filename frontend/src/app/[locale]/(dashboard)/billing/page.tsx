@@ -26,6 +26,11 @@ const PLAN_BUTTON: Record<PlanKey, string> = {
   chain: "bg-purple-600 hover:bg-purple-700",
 };
 
+const PLAN_PAYMENT_LINK: Partial<Record<PlanKey, string>> = {
+  pro: "https://buy.stripe.com/test_00w9ASeCbetbfbFdajd7q01",
+  chain: "https://buy.stripe.com/test_3cIbJ08dNdp74x15HRd7q02",
+};
+
 export default function BillingPage() {
   const t = useTranslations("billing");
   const tPlan = useTranslations("plan");
@@ -49,18 +54,6 @@ export default function BillingPage() {
       toast(t("upgradeCanceled"));
     }
   }, [searchParams]);
-
-  const checkoutMutation = useMutation({
-    mutationFn: (plan: PlanKey) =>
-      apiFetch<{ url: string }>("/billing/checkout-session", {
-        method: "POST",
-        body: JSON.stringify({ plan }),
-      }),
-    onSuccess: (res) => {
-      window.location.href = res.url;
-    },
-    onError: () => toast.error(t("upgradeFailed")),
-  });
 
   const portalMutation = useMutation({
     mutationFn: () =>
@@ -170,16 +163,17 @@ export default function BillingPage() {
               </ul>
 
               {canUpgrade ? (
-                <button
-                  onClick={() => checkoutMutation.mutate(planKey)}
-                  disabled={checkoutMutation.isPending}
+                <a
+                  href={PLAN_PAYMENT_LINK[planKey]}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className={cn(
-                    "w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50",
+                    "w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white text-center disabled:opacity-50",
                     PLAN_BUTTON[planKey]
                   )}
                 >
-                  {checkoutMutation.isPending ? t("upgrade") + "…" : t("upgrade")}
-                </button>
+                  {t("upgrade")}
+                </a>
               ) : isCurrent ? (
                 <div className="w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-center text-slate-400 border border-slate-200">
                   {t("currentPlanBadge")}
