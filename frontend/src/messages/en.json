@@ -80,7 +80,11 @@
     "deleteAll": "Delete All",
     "deleteAllConfirm": "Delete ALL inventory batches for this pharmacy, regardless of any search or filter currently applied? Batches with recorded sales will be zeroed out instead of removed. This cannot be undone.",
     "deleteAllSuccess": "Inventory cleared: {deleted} deleted, {zeroed} zeroed out",
-    "deleteAllFailed": "Failed to delete inventory"
+    "deleteAllFailed": "Failed to delete inventory",
+    "deleteExpired": "Delete Expired",
+    "deleteExpiredConfirm": "Delete all EXPIRED inventory batches for this pharmacy? Batches with recorded sales will be zeroed out instead of removed. Non-expired batches are not affected. This cannot be undone.",
+    "deleteExpiredSuccess": "Expired batches cleared: {deleted} deleted, {zeroed} zeroed out",
+    "deleteExpiredFailed": "Failed to delete expired inventory"
   },
   "alerts": {
     "title": "Alerts",

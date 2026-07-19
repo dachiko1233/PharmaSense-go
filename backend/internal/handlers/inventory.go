@@ -64,7 +64,7 @@ func (h *InventoryHandler) List(c *gin.Context) {
 			ORDER BY calculated_at DESC
 			LIMIT 1
 		) ra ON true
-		WHERE ib.pharmacy_id = $1
+		WHERE ib.pharmacy_id = $1 AND ib.current_quantity > 0
 	`
 	args := []interface{}{pharmacyID}
 	argIdx := 2
@@ -203,12 +203,37 @@ func (h *InventoryHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
 
-// ── Delete All ───────────────────────────────────────────────────────────────
+// ── Delete All / Delete Expired ───────────────────────────────────────────────
 
-// DeleteAll wipes every batch for the pharmacy. Batches with recorded sales
-// history can't be hard-deleted (sales.batch_id has no ON DELETE CASCADE),
-// so those are zeroed out instead of removed — same fallback used by the
-// dispose alert action.
+// deleteBatchesByIDs hard-deletes each batch. Batches with recorded sales or
+// alert-action history can't be hard-deleted (those tables reference
+// inventory_batches with no ON DELETE CASCADE), so those are zeroed out
+// instead of removed — same fallback used by the dispose alert action.
+func (h *InventoryHandler) deleteBatchesByIDs(ctx context.Context, pharmacyID uuid.UUID, ids []uuid.UUID) (deleted, zeroed int) {
+	for _, id := range ids {
+		tag, err := h.db.Exec(ctx,
+			`DELETE FROM inventory_batches WHERE id = $1 AND pharmacy_id = $2`, id, pharmacyID)
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+				if _, zErr := h.db.Exec(ctx,
+					`UPDATE inventory_batches SET current_quantity = 0, updated_at = NOW() WHERE id = $1 AND pharmacy_id = $2`,
+					id, pharmacyID,
+				); zErr == nil {
+					zeroed++
+				}
+				continue
+			}
+			continue
+		}
+		if tag.RowsAffected() > 0 {
+			deleted++
+		}
+	}
+	return deleted, zeroed
+}
+
+// DeleteAll wipes every batch for the pharmacy.
 func (h *InventoryHandler) DeleteAll(c *gin.Context) {
 	pharmacyID := middleware.GetPharmacyID(c)
 
@@ -232,28 +257,36 @@ func (h *InventoryHandler) DeleteAll(c *gin.Context) {
 		return
 	}
 
-	deleted, zeroed := 0, 0
-	for _, id := range ids {
-		tag, err := h.db.Exec(c.Request.Context(),
-			`DELETE FROM inventory_batches WHERE id = $1 AND pharmacy_id = $2`, id, pharmacyID)
-		if err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-				if _, zErr := h.db.Exec(c.Request.Context(),
-					`UPDATE inventory_batches SET current_quantity = 0, updated_at = NOW() WHERE id = $1 AND pharmacy_id = $2`,
-					id, pharmacyID,
-				); zErr == nil {
-					zeroed++
-				}
-				continue
-			}
+	deleted, zeroed := h.deleteBatchesByIDs(c.Request.Context(), pharmacyID, ids)
+	c.JSON(http.StatusOK, gin.H{"deleted": deleted, "zeroed": zeroed, "total": len(ids)})
+}
+
+// DeleteExpired wipes only the batches whose expiry date has already passed;
+// batches that aren't expired yet are left untouched.
+func (h *InventoryHandler) DeleteExpired(c *gin.Context) {
+	pharmacyID := middleware.GetPharmacyID(c)
+
+	rows, err := h.db.Query(c.Request.Context(),
+		`SELECT id FROM inventory_batches WHERE pharmacy_id = $1 AND expiry_date < NOW()`, pharmacyID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load inventory"})
+		return
+	}
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
 			continue
 		}
-		if tag.RowsAffected() > 0 {
-			deleted++
-		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load inventory"})
+		return
 	}
 
+	deleted, zeroed := h.deleteBatchesByIDs(c.Request.Context(), pharmacyID, ids)
 	c.JSON(http.StatusOK, gin.H{"deleted": deleted, "zeroed": zeroed, "total": len(ids)})
 }
 

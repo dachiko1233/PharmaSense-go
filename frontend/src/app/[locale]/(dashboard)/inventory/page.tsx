@@ -7,7 +7,7 @@ import { differenceInDays, isToday } from "date-fns";
 import { apiFetch } from "@/lib/api/client";
 import { InventoryBatch } from "@/types";
 import { formatCurrency, formatDate, riskBadgeClass, cn } from "@/lib/utils";
-import { Search, Filter, Download, Trash2 } from "lucide-react";
+import { Search, Filter, Download, Trash2, CalendarX } from "lucide-react";
 import { toast } from "sonner";
 
 const RISK_FILTERS = ["", "EXPIRED", "CRITICAL", "HIGH", "MEDIUM", "LOW"];
@@ -68,6 +68,25 @@ export default function InventoryPage() {
     }
   };
 
+  const deleteExpiredMutation = useMutation({
+    mutationFn: () => apiFetch<{ deleted: number; zeroed: number; total: number }>("/inventory/expired", { method: "DELETE" }),
+    onSuccess: (res) => {
+      toast.success(t("deleteExpiredSuccess", { deleted: res.deleted, zeroed: res.zeroed }));
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["timeline"] });
+      queryClient.invalidateQueries({ queryKey: ["alerts-critical"] });
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+    },
+    onError: () => toast.error(t("deleteExpiredFailed")),
+  });
+
+  const handleDeleteExpired = () => {
+    if (window.confirm(t("deleteExpiredConfirm"))) {
+      deleteExpiredMutation.mutate();
+    }
+  };
+
   const exportCSV = () => {
     const rows = [
       ["Product", "Batch", "Expiry", "Quantity", "Purchase Price", "Selling Price", "Risk", "Supplier"].join(","),
@@ -107,6 +126,14 @@ export default function InventoryPage() {
           >
             <Download className="w-4 h-4" />
             {t("exportCSV")}
+          </button>
+          <button
+            onClick={handleDeleteExpired}
+            disabled={deleteExpiredMutation.isPending}
+            className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+          >
+            <CalendarX className="w-4 h-4" />
+            {t("deleteExpired")}
           </button>
           <button
             onClick={handleDeleteAll}
