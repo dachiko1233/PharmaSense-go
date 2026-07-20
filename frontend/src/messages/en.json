@@ -84,7 +84,28 @@
     "deleteExpired": "Delete Expired",
     "deleteExpiredConfirm": "Delete all EXPIRED inventory batches for this pharmacy? Batches with recorded sales will be zeroed out instead of removed. Non-expired batches are not affected. This cannot be undone.",
     "deleteExpiredSuccess": "Expired batches cleared: {deleted} deleted, {zeroed} zeroed out",
-    "deleteExpiredFailed": "Failed to delete expired inventory"
+    "deleteExpiredFailed": "Failed to delete expired inventory",
+    "addProduct": {
+      "button": "Add Product",
+      "title": "Add Product",
+      "name": "Product name",
+      "namePlaceholder": "e.g. Aspirin 500mg",
+      "expiryDate": "Expiry date",
+      "quantity": "Quantity",
+      "purchasePrice": "Purchase price",
+      "sellingPrice": "Selling price",
+      "optionalSection": "Optional details",
+      "barcode": "Barcode",
+      "batchNumber": "Batch number",
+      "category": "Category",
+      "manufacturer": "Manufacturer",
+      "supplier": "Supplier",
+      "supplierEmail": "Supplier email",
+      "cancel": "Cancel",
+      "submit": "Add to inventory",
+      "success": "Product added to inventory",
+      "failed": "Failed to add product"
+    }
   },
   "alerts": {
     "title": "Alerts",

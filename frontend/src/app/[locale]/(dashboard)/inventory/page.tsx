@@ -7,8 +7,9 @@ import { differenceInDays, isToday } from "date-fns";
 import { apiFetch } from "@/lib/api/client";
 import { InventoryBatch } from "@/types";
 import { formatCurrency, formatDate, riskBadgeClass, cn } from "@/lib/utils";
-import { Search, Filter, Download, Trash2, CalendarX } from "lucide-react";
+import { Search, Filter, Download, Trash2, CalendarX, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { AddProductModal, AddProductPayload } from "./AddProductModal";
 
 const RISK_FILTERS = ["", "EXPIRED", "CRITICAL", "HIGH", "MEDIUM", "LOW"];
 
@@ -36,6 +37,8 @@ export default function InventoryPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [riskFilter, setRiskFilter] = useState("");
+  const [addProductOpen, setAddProductOpen] = useState(false);
+  const [addProductError, setAddProductError] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery<{ data: InventoryBatch[]; total: number }>({
     queryKey: ["inventory", search, riskFilter],
@@ -87,6 +90,32 @@ export default function InventoryPage() {
     }
   };
 
+  const addProductMutation = useMutation({
+    mutationFn: (payload: AddProductPayload) =>
+      apiFetch<{ id: string; product_id: string; message: string }>("/inventory/manual", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      toast.success(t("addProduct.success"));
+      setAddProductOpen(false);
+      setAddProductError(null);
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["timeline"] });
+      queryClient.invalidateQueries({ queryKey: ["alerts-critical"] });
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+    },
+    onError: (err: any) => {
+      setAddProductError(err?.message ?? t("addProduct.failed"));
+    },
+  });
+
+  const handleAddProduct = (payload: AddProductPayload) => {
+    setAddProductError(null);
+    addProductMutation.mutate(payload);
+  };
+
   const exportCSV = () => {
     const rows = [
       ["Product", "Batch", "Expiry", "Quantity", "Purchase Price", "Selling Price", "Risk", "Supplier"].join(","),
@@ -120,6 +149,16 @@ export default function InventoryPage() {
           <p className="text-slate-500 text-sm mt-1">{t("subtitle")}</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              setAddProductError(null);
+              setAddProductOpen(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            {t("addProduct.button")}
+          </button>
           <button
             onClick={exportCSV}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
@@ -257,6 +296,14 @@ export default function InventoryPage() {
           </div>
         )}
       </div>
+
+      <AddProductModal
+        open={addProductOpen}
+        onClose={() => setAddProductOpen(false)}
+        onSubmit={handleAddProduct}
+        isLoading={addProductMutation.isPending}
+        serverError={addProductError}
+      />
     </div>
   );
 }

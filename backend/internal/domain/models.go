@@ -79,6 +79,7 @@ type InventoryBatch struct {
 	PurchasePrice   float64   `json:"purchase_price" db:"purchase_price"`
 	SellingPrice    float64   `json:"selling_price" db:"selling_price"`
 	Supplier        *string   `json:"supplier,omitempty" db:"supplier"`
+	SupplierEmail   *string   `json:"supplier_email,omitempty" db:"supplier_email"`
 	ReceivedDate    time.Time `json:"received_date" db:"received_date"`
 	CreatedAt       time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`

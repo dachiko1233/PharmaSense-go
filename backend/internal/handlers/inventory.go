@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -52,7 +53,7 @@ func (h *InventoryHandler) List(c *gin.Context) {
 	query := `
 		SELECT ib.id, ib.pharmacy_id, ib.product_id, ib.batch_number, ib.expiry_date,
 		       ib.initial_quantity, ib.current_quantity, ib.purchase_price, ib.selling_price,
-		       ib.supplier, ib.received_date, ib.created_at, ib.updated_at,
+		       ib.supplier, ib.supplier_email, ib.received_date, ib.created_at, ib.updated_at,
 		       p.name as product_name, p.category, p.manufacturer,
 		       ra.risk_level, ra.days_until_expiry, ra.estimated_loss, ra.suggested_discount_percent
 		FROM inventory_batches ib
@@ -101,6 +102,7 @@ func (h *InventoryHandler) List(c *gin.Context) {
 		PurchasePrice   float64   `json:"purchase_price"`
 		SellingPrice    float64   `json:"selling_price"`
 		Supplier        *string   `json:"supplier"`
+		SupplierEmail   *string   `json:"supplier_email"`
 		ReceivedDate    time.Time `json:"received_date"`
 		CreatedAt       time.Time `json:"created_at"`
 		UpdatedAt       time.Time `json:"updated_at"`
@@ -119,7 +121,7 @@ func (h *InventoryHandler) List(c *gin.Context) {
 		if err := rows.Scan(
 			&b.ID, &b.PharmacyID, &b.ProductID, &b.BatchNumber, &b.ExpiryDate,
 			&b.InitialQuantity, &b.CurrentQuantity, &b.PurchasePrice, &b.SellingPrice,
-			&b.Supplier, &b.ReceivedDate, &b.CreatedAt, &b.UpdatedAt,
+			&b.Supplier, &b.SupplierEmail, &b.ReceivedDate, &b.CreatedAt, &b.UpdatedAt,
 			&b.ProductName, &b.Category, &b.Manufacturer,
 			&b.RiskLevel, &b.DaysUntilExpiry, &b.EstimatedLoss, &b.SuggestedDisc,
 		); err != nil {
@@ -181,6 +183,137 @@ func (h *InventoryHandler) Create(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"id": id, "message": "batch created"})
+}
+
+// ── Create (manual single product, no CSV) ────────────────────────────────────
+
+// createManualProductRequest mirrors the CSV import's per-row fields so a
+// manually added product lands in the exact same products/inventory_batches
+// tables as a CSV-imported one (same findOrCreateProduct + insert path).
+type createManualProductRequest struct {
+	ProductName   string  `json:"name"           binding:"required"`
+	ExpiryDate    string  `json:"expiry_date"    binding:"required"`
+	Quantity      int     `json:"quantity"       binding:"required,min=1"`
+	PurchasePrice float64 `json:"purchase_price" binding:"required,min=0"`
+	SellingPrice  float64 `json:"selling_price"  binding:"required,min=0"`
+	Barcode       string  `json:"barcode"`
+	BatchNumber   string  `json:"batch_number"`
+	Category      string  `json:"category"`
+	Manufacturer  string  `json:"manufacturer"`
+	Supplier      string  `json:"supplier"`
+	SupplierEmail string  `json:"supplier_email" binding:"omitempty,email"`
+}
+
+// CreateManual adds a single product directly to inventory (the "Add Product"
+// form), without going through CSV. It reuses findOrCreateProduct so manually
+// added products and CSV-imported products share the same products table and
+// the same inventory_batches table — expiry alerts, risk scoring, and returns
+// treat both identically.
+func (h *InventoryHandler) CreateManual(c *gin.Context) {
+	pharmacyID := middleware.GetPharmacyID(c)
+
+	var req createManualProductRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": humanizeManualProductError(err)})
+		return
+	}
+
+	expiryDate, err := parseDate(req.ExpiryDate)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid expiry_date — use YYYY-MM-DD"})
+		return
+	}
+
+	b := parsedBatch{
+		ProductName:   strings.TrimSpace(req.ProductName),
+		Barcode:       strings.TrimSpace(req.Barcode),
+		BatchNumber:   strings.TrimSpace(req.BatchNumber),
+		ExpiryDate:    expiryDate,
+		Quantity:      req.Quantity,
+		PurchasePrice: req.PurchasePrice,
+		SellingPrice:  req.SellingPrice,
+		ReceivedDate:  time.Now().Truncate(24 * time.Hour),
+		Supplier:      strings.TrimSpace(req.Supplier),
+		Category:      strings.TrimSpace(req.Category),
+		Manufacturer:  strings.TrimSpace(req.Manufacturer),
+	}
+
+	productID, err := h.findOrCreateProduct(c.Request.Context(), b)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to save product: %v", err)})
+		return
+	}
+
+	var batchNum, supplier, supplierEmail *string
+	if b.BatchNumber != "" {
+		batchNum = &b.BatchNumber
+	}
+	if b.Supplier != "" {
+		supplier = &b.Supplier
+	}
+	if email := strings.TrimSpace(req.SupplierEmail); email != "" {
+		supplierEmail = &email
+	}
+
+	var id uuid.UUID
+	err = h.db.QueryRow(c.Request.Context(), `
+		INSERT INTO inventory_batches
+		  (pharmacy_id, product_id, batch_number, expiry_date, initial_quantity, current_quantity,
+		   purchase_price, selling_price, supplier, supplier_email, received_date)
+		VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8,$9,$10)
+		RETURNING id
+	`, pharmacyID, productID, batchNum, b.ExpiryDate, b.Quantity,
+		b.PurchasePrice, b.SellingPrice, supplier, supplierEmail, b.ReceivedDate,
+	).Scan(&id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to add product to inventory"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"id": id, "product_id": productID, "message": "product added"})
+}
+
+// humanizeManualProductError turns validator field errors into a single
+// readable sentence naming the offending field(s), instead of Go's default
+// "Key: 'createManualProductRequest.X' Error:..." dump.
+func humanizeManualProductError(err error) string {
+	var verrs validator.ValidationErrors
+	if !errors.As(err, &verrs) {
+		return "invalid request body"
+	}
+
+	fieldNames := map[string]string{
+		"ProductName":   "product name",
+		"ExpiryDate":    "expiry date",
+		"Quantity":      "quantity",
+		"PurchasePrice": "purchase price",
+		"SellingPrice":  "selling price",
+		"SupplierEmail": "supplier email",
+	}
+
+	var missing, invalid []string
+	for _, fe := range verrs {
+		name := fieldNames[fe.Field()]
+		if name == "" {
+			name = fe.Field()
+		}
+		if fe.Tag() == "required" {
+			missing = append(missing, name)
+		} else {
+			invalid = append(invalid, name)
+		}
+	}
+
+	switch {
+	case len(missing) > 0 && len(invalid) > 0:
+		return fmt.Sprintf("missing required field(s): %s; invalid value for: %s", strings.Join(missing, ", "), strings.Join(invalid, ", "))
+	case len(missing) > 0:
+		return fmt.Sprintf("missing required field(s): %s", strings.Join(missing, ", "))
+	case len(invalid) > 0:
+		return fmt.Sprintf("invalid value for: %s", strings.Join(invalid, ", "))
+	default:
+		return "invalid request body"
+	}
 }
 
 // ── Delete ────────────────────────────────────────────────────────────────────

@@ -34,6 +34,7 @@ export interface InventoryBatch {
   purchase_price: number;
   selling_price: number;
   supplier?: string;
+  supplier_email?: string;
   received_date: string;
   product_name: string;
   category?: string;
