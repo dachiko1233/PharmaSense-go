@@ -336,6 +336,22 @@ func (h *InventoryHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
 
+// Count returns the total number of inventory batches for the pharmacy,
+// ignoring any search/risk filters — used to show an accurate count before
+// a bulk delete, since DeleteAll itself ignores those filters too.
+func (h *InventoryHandler) Count(c *gin.Context) {
+	pharmacyID := middleware.GetPharmacyID(c)
+
+	var total int
+	if err := h.db.QueryRow(c.Request.Context(),
+		`SELECT COUNT(*) FROM inventory_batches WHERE pharmacy_id = $1`, pharmacyID,
+	).Scan(&total); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to count inventory"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"total": total})
+}
+
 // ── Delete All / Delete Expired ───────────────────────────────────────────────
 
 // deleteBatchesByIDs hard-deletes each batch. Batches with recorded sales or

@@ -10,6 +10,7 @@ import { formatCurrency, formatDate, riskBadgeClass, cn } from "@/lib/utils";
 import { Search, Filter, Download, Trash2, CalendarX, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { AddProductModal, AddProductPayload } from "./AddProductModal";
+import { DeleteAllConfirmModal } from "./DeleteAllConfirmModal";
 
 const RISK_FILTERS = ["", "EXPIRED", "CRITICAL", "HIGH", "MEDIUM", "LOW"];
 
@@ -39,6 +40,8 @@ export default function InventoryPage() {
   const [riskFilter, setRiskFilter] = useState("");
   const [addProductOpen, setAddProductOpen] = useState(false);
   const [addProductError, setAddProductError] = useState<string | null>(null);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+  const [deleteAllCount, setDeleteAllCount] = useState(0);
 
   const { data, isLoading } = useQuery<{ data: InventoryBatch[]; total: number }>({
     queryKey: ["inventory", search, riskFilter],
@@ -56,6 +59,7 @@ export default function InventoryPage() {
     mutationFn: () => apiFetch<{ deleted: number; zeroed: number; total: number }>("/inventory", { method: "DELETE" }),
     onSuccess: (res) => {
       toast.success(t("deleteAllSuccess", { deleted: res.deleted, zeroed: res.zeroed }));
+      setDeleteAllOpen(false);
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["timeline"] });
@@ -65,10 +69,14 @@ export default function InventoryPage() {
     onError: () => toast.error(t("deleteAllFailed")),
   });
 
-  const handleDeleteAll = () => {
-    if (window.confirm(t("deleteAllConfirm"))) {
-      deleteAllMutation.mutate();
+  const handleDeleteAll = async () => {
+    try {
+      const res = await apiFetch<{ total: number }>("/inventory/count");
+      setDeleteAllCount(res.total);
+    } catch {
+      setDeleteAllCount(0);
     }
+    setDeleteAllOpen(true);
   };
 
   const deleteExpiredMutation = useMutation({
@@ -303,6 +311,14 @@ export default function InventoryPage() {
         onSubmit={handleAddProduct}
         isLoading={addProductMutation.isPending}
         serverError={addProductError}
+      />
+
+      <DeleteAllConfirmModal
+        open={deleteAllOpen}
+        onClose={() => setDeleteAllOpen(false)}
+        onConfirm={() => deleteAllMutation.mutate()}
+        count={deleteAllCount}
+        isLoading={deleteAllMutation.isPending}
       />
     </div>
   );

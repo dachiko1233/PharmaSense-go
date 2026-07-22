@@ -156,6 +156,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 
 	// Inventory
 	protected.GET("/inventory", invH.List)
+	protected.GET("/inventory/count", invH.Count)
 	protected.POST("/inventory", invH.Create)
 	protected.POST("/inventory/manual", invH.CreateManual)
 	protected.DELETE("/inventory/expired", invH.DeleteExpired)

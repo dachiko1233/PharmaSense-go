@@ -81,6 +81,14 @@
     "deleteAllConfirm": "Delete ALL inventory batches for this pharmacy, regardless of any search or filter currently applied? Batches with recorded sales will be zeroed out instead of removed. This cannot be undone.",
     "deleteAllSuccess": "Inventory cleared: {deleted} deleted, {zeroed} zeroed out",
     "deleteAllFailed": "Failed to delete inventory",
+    "deleteAllModal": {
+      "title": "Delete All Inventory",
+      "description": "This will permanently delete all {count} products.",
+      "irreversible": "This action cannot be undone.",
+      "typeToConfirm": "Type {word} to confirm",
+      "cancel": "Cancel",
+      "confirm": "Delete All"
+    },
     "deleteExpired": "Delete Expired",
     "deleteExpiredConfirm": "Delete all EXPIRED inventory batches for this pharmacy? Batches with recorded sales will be zeroed out instead of removed. Non-expired batches are not affected. This cannot be undone.",
     "deleteExpiredSuccess": "Expired batches cleared: {deleted} deleted, {zeroed} zeroed out",
