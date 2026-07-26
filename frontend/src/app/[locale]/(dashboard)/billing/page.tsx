@@ -6,30 +6,11 @@ import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api/client";
 import { cn, formatDate, planBadgeClass } from "@/lib/utils";
+import { PLAN_ORDER, PLAN_BUTTON, PLAN_PAYMENT_LINK, type PlanKey } from "@/lib/plans";
+import PricingCard from "@/components/billing/PricingCard";
 import { Subscription } from "@/types";
 import { toast } from "sonner";
-import { CreditCard, Check } from "lucide-react";
-
-type PlanKey = "free" | "pro" | "chain";
-
-const PLAN_ORDER: PlanKey[] = ["free", "pro", "chain"];
-
-const PLAN_RING: Record<PlanKey, string> = {
-  free: "ring-slate-200",
-  pro: "ring-emerald-500",
-  chain: "ring-purple-500",
-};
-
-const PLAN_BUTTON: Record<PlanKey, string> = {
-  free: "",
-  pro: "bg-emerald-600 hover:bg-emerald-700",
-  chain: "bg-purple-600 hover:bg-purple-700",
-};
-
-const PLAN_PAYMENT_LINK: Partial<Record<PlanKey, string>> = {
-  pro: "https://buy.stripe.com/test_00w9ASeCbetbfbFdajd7q01",
-  chain: "https://buy.stripe.com/test_3cIbJ08dNdp74x15HRd7q02",
-};
+import { CreditCard } from "lucide-react";
 
 export default function BillingPage() {
   const t = useTranslations("billing");
@@ -131,55 +112,36 @@ export default function BillingPage() {
           const canUpgrade = index > currentIndex;
           const features = t.raw(`plans.${planKey}.features`) as string[];
 
-          return (
-            <div
-              key={planKey}
+          const cta = canUpgrade ? (
+            <a
+              href={PLAN_PAYMENT_LINK[planKey]}
+              target="_blank"
+              rel="noopener noreferrer"
               className={cn(
-                "rounded-xl border bg-white shadow-sm p-6 flex flex-col ring-2",
-                isCurrent ? PLAN_RING[planKey] : "ring-transparent border-slate-200"
+                "w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white text-center disabled:opacity-50",
+                PLAN_BUTTON[planKey]
               )}
             >
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-semibold text-slate-900">{t(`plans.${planKey}.name`)}</h3>
-                {isCurrent && (
-                  <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", planBadgeClass(planKey))}>
-                    {t("currentPlanBadge")}
-                  </span>
-                )}
-              </div>
-
-              <div className="mb-4">
-                <span className="text-3xl font-bold text-slate-900">{t(`plans.${planKey}.price`)}</span>
-                {planKey !== "free" && <span className="text-sm text-slate-400">{t("perMonth")}</span>}
-              </div>
-
-              <ul className="space-y-2 mb-6 flex-1">
-                {features.map((feature) => (
-                  <li key={feature} className="flex items-start gap-2 text-sm text-slate-600">
-                    <Check className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-
-              {canUpgrade ? (
-                <a
-                  href={PLAN_PAYMENT_LINK[planKey]}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={cn(
-                    "w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white text-center disabled:opacity-50",
-                    PLAN_BUTTON[planKey]
-                  )}
-                >
-                  {t("upgrade")}
-                </a>
-              ) : isCurrent ? (
-                <div className="w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-center text-slate-400 border border-slate-200">
-                  {t("currentPlanBadge")}
-                </div>
-              ) : null}
+              {t("upgrade")}
+            </a>
+          ) : isCurrent ? (
+            <div className="w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-center text-slate-400 border border-slate-200">
+              {t("currentPlanBadge")}
             </div>
+          ) : null;
+
+          return (
+            <PricingCard
+              key={planKey}
+              planKey={planKey}
+              name={t(`plans.${planKey}.name`)}
+              price={t(`plans.${planKey}.price`)}
+              features={features}
+              isCurrent={isCurrent}
+              currentPlanBadgeLabel={t("currentPlanBadge")}
+              perMonthLabel={t("perMonth")}
+              cta={cta}
+            />
           );
         })}
       </div>

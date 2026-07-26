@@ -492,5 +492,49 @@
     "banner": "Because we use only strictly necessary cookies, no cookie consent banner is required under GDPR or the ePrivacy Directive.",
     "more": "For more information about how we handle data, please see our",
     "privacyLink": "Privacy Policy"
+  },
+  "landing": {
+    "hero": {
+      "headline": "Stop losing money on expired medicines",
+      "subtitle": "PharmaSense alerts you before products expire and shows you which ones won't sell in time — so you can act before it becomes a loss.",
+      "tryDemo": "Try Demo",
+      "loginHeading": "Welcome back"
+    },
+    "problem": {
+      "problemTitle": "The problem",
+      "problemBody": "Every month, pharmacies write off unsold medicines that expired quietly on the shelf — lost inventory, lost margin, no warning until it's too late.",
+      "solutionTitle": "The solution",
+      "solutionBody": "PharmaSense tracks every expiry date automatically and alerts you weeks in advance, so you can act before stock turns into a loss."
+    },
+    "features": {
+      "title": "Everything you need to stop losses before they happen",
+      "alerts": {
+        "title": "Automatic expiry alerts",
+        "body": "Get notified automatically as products approach their expiry date — no manual spreadsheet checks."
+      },
+      "risk": {
+        "title": "Risk prediction",
+        "body": "PharmaSense calculates which products are unlikely to sell before they expire, so you can act early."
+      },
+      "returns": {
+        "title": "Automatic supplier returns",
+        "body": "Generate supplier return requests automatically for at-risk stock, before it becomes a write-off."
+      }
+    },
+    "screenshot": {
+      "title": "See it in action",
+      "alt": "PharmaSense dashboard showing expiry alerts and inventory risk"
+    },
+    "pricing": {
+      "title": "Simple, transparent pricing",
+      "subtitle": "Pick the plan that fits your pharmacy. Upgrade anytime.",
+      "cta": "Get Started"
+    },
+    "cta": {
+      "title": "Ready to stop losing money on expired stock?",
+      "subtitle": "Book a demo and see how PharmaSense fits your pharmacy.",
+      "bookDemo": "Book a demo",
+      "contact": "Or contact us directly:"
+    }
   }
 }

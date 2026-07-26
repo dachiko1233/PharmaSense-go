@@ -32,16 +32,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [pharmacies, setPharmacies] = useState<PharmacyOption[]>([]);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     hydrate();
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
-    if (!token && !isAuthenticated) {
+    if (hydrated && !token && !isAuthenticated) {
       router.push(`/${locale}/login`);
     }
-  }, [token, isAuthenticated]);
+  }, [hydrated, token, isAuthenticated]);
 
   useEffect(() => {
     if (token) {
@@ -91,7 +93,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { href: `/${locale}/settings`, label: t("settings"), icon: Settings },
   ];
 
-  if (!isAuthenticated && !token) {
+  if (!hydrated || (!isAuthenticated && !token)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full" />
