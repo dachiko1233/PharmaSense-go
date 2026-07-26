@@ -75,7 +75,7 @@ func (s *StripeService) ConstructEvent(body []byte, sigHeader string) (stripe.Ev
 	}
 	return event, nil
 }
-
+	
 func (s *StripeService) ReadBody(r *http.Request) ([]byte, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {

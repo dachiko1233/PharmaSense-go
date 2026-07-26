@@ -78,7 +78,10 @@ export default function SettingsPage() {
   useEffect(() => {
     if (data) {
       digestForm.setValue("daily_digest_enabled", data.daily_digest_enabled);
-      digestForm.setValue("digest_time", (data.digest_time ?? "08:00").slice(0, 5));
+      digestForm.setValue(
+        "digest_time",
+        (data.digest_time ?? "08:00").slice(0, 5),
+      );
     }
   }, [data]);
 
@@ -124,6 +127,47 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-6">
+        {/* ── Email Notifications (info only) ───────────────────── */}
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center">
+              <Bell className="w-5 h-5 text-blue-600" />
+            </div>
+            <h2 className="font-semibold text-slate-900">
+              {t("emailNotifications")}
+            </h2>
+          </div>
+
+          <div className="space-y-3 text-sm text-slate-600">
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+              Welcome email on signup
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+              Password reset emails
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+              {t("emailPreferences.digestAt", {
+                time: formatDigestTime(data?.digest_time),
+              })}
+            </div>
+          </div>
+
+          {data && (
+            <div className="mt-4 text-xs text-slate-500">
+              Email:{""}
+              <span className="font-medium text-slate-700">{data.email}</span>
+              {!data.email_verified && (
+                <span className="ml-2 bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                  unverified
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* ── Email Preferences ──────────────────────────────────── */}
         <form
           onSubmit={digestForm.handleSubmit(onDigestSubmit)}
@@ -187,54 +231,30 @@ export default function SettingsPage() {
               className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
             >
               {digestMutation.isPending && (
-                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                <svg
+                  className="animate-spin w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
                 </svg>
               )}
               {t("emailPreferences.save")}
             </button>
           </div>
         </form>
-
-        {/* ── Email Notifications (info only) ───────────────────── */}
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Bell className="w-5 h-5 text-blue-600" />
-            </div>
-            <h2 className="font-semibold text-slate-900">
-              {t("emailNotifications")}
-            </h2>
-          </div>
-
-          <div className="space-y-3 text-sm text-slate-600">
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-              Welcome email on signup
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-              Password reset emails
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-              {t("emailPreferences.digestAt", { time: formatDigestTime(data?.digest_time) })}
-            </div>
-          </div>
-
-          {data && (
-            <div className="mt-4 text-xs text-slate-500">
-              Email:{" "}
-              <span className="font-medium text-slate-700">{data.email}</span>
-              {!data.email_verified && (
-                <span className="ml-2 bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
-                  unverified
-                </span>
-              )}
-            </div>
-          )}
-        </div>
 
         {/* ── SMS Notifications ─────────────────────────────────── */}
         <form
@@ -295,9 +315,24 @@ export default function SettingsPage() {
               className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
             >
               {smsMutation.isPending && (
-                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                <svg
+                  className="animate-spin w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
                 </svg>
               )}
               {t("save")}
