@@ -15,8 +15,8 @@ export default function DashboardPreview() {
         <Image
           src="/dash.png"
           alt={t("alt")}
-          width={1600}
-          height={1000}
+          width={1853}
+          height={958}
           className="h-auto w-full"
         />
       </div>
