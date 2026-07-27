@@ -9,8 +9,10 @@ import { Toaster } from "sonner";
 const inter = Inter({ subsets: ["latin", "greek"] });
 
 export const metadata: Metadata = {
-  title: "PharmaSense — Pharmacy Expiry Monitoring",
-  description: "Monitor expiry dates, reduce waste, save thousands monthly",
+  title: {
+    default: "PharmaSense",
+    template: "%s — PharmaSense",
+  },
 };
 
 export default async function LocaleLayout({

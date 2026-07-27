@@ -64,7 +64,7 @@ export default function LoginForm({ showForgotPassword = false, showSignupLink =
             type="email"
             autoComplete="email"
             className="w-full rounded-lg border border-slate-300 py-2 pl-10 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-            placeholder="admin@pharmasense.cy"
+            placeholder="you@pharmacy.com"
           />
         </div>
         {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
