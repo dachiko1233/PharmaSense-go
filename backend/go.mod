@@ -13,7 +13,6 @@ require (
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/resend/resend-go/v2 v2.12.0
-	github.com/stripe/stripe-go/v79 v79.12.0
 	github.com/twilio/twilio-go v1.23.4
 	golang.org/x/crypto v0.24.0
 )

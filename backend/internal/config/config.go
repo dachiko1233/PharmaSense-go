@@ -14,21 +14,16 @@ type Config struct {
 	JWTExpiryHours  int
 	FrontendOrigin  string
 	FrontendOrigins []string
-	Env            string
-	Port           string
-	AppURL         string
+	Env             string
+	Port            string
+	AppURL          string
 
 	ResendAPIKey    string
 	ResendFromEmail string
 
-	TwilioAccountSID  string
-	TwilioAuthToken   string
-	TwilioFromNumber  string
-
-	StripeSecretKey      string
-	StripeWebhookSecret  string
-	StripePricePro       string
-	StripePriceChain     string
+	TwilioAccountSID string
+	TwilioAuthToken  string
+	TwilioFromNumber string
 
 	DodoAPIKey         string
 	DodoWebhookSecret  string
@@ -59,9 +54,9 @@ func Load() *Config {
 		JWTExpiryHours:  hours,
 		FrontendOrigin:  origin,
 		FrontendOrigins: origins,
-		Env:            getEnv("ENV", "development"),
-		Port:           getEnv("PORT", "3001"),
-		AppURL:         getEnv("APP_URL", "http://localhost:3000"),
+		Env:             getEnv("ENV", "development"),
+		Port:            getEnv("PORT", "3001"),
+		AppURL:          getEnv("APP_URL", "http://localhost:3000"),
 
 		ResendAPIKey:    getEnv("RESEND_API_KEY", ""),
 		ResendFromEmail: getEnv("RESEND_FROM_EMAIL", "noreply@pharmasense.cy"),
@@ -69,11 +64,6 @@ func Load() *Config {
 		TwilioAccountSID: getEnv("TWILIO_ACCOUNT_SID", ""),
 		TwilioAuthToken:  getEnv("TWILIO_AUTH_TOKEN", ""),
 		TwilioFromNumber: getEnv("TWILIO_FROM_NUMBER", ""),
-
-		StripeSecretKey:     getEnv("STRIPE_SECRET_KEY", ""),
-		StripeWebhookSecret: getEnv("STRIPE_WEBHOOK_SECRET", ""),
-		StripePricePro:      getEnv("STRIPE_PRICE_PRO", ""),
-		StripePriceChain:    getEnv("STRIPE_PRICE_CHAIN", ""),
 
 		DodoAPIKey:         getEnv("DODO_API_KEY", ""),
 		DodoWebhookSecret:  getEnv("DODO_WEBHOOK_SECRET", ""),

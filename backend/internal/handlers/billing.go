@@ -15,20 +15,16 @@ import (
 )
 
 type BillingHandler struct {
-	db         *pgxpool.Pool
-	billing    billing.BillingProvider
-	stripeReal *billing.StripeService
-	dodoReal   *billing.DodoService
-	isMock     bool
+	db       *pgxpool.Pool
+	billing  billing.BillingProvider
+	dodoReal *billing.DodoService
 }
 
-func NewBillingHandler(db *pgxpool.Pool, provider billing.BillingProvider, stripeReal *billing.StripeService, dodoReal *billing.DodoService, isMock bool) *BillingHandler {
+func NewBillingHandler(db *pgxpool.Pool, provider billing.BillingProvider, dodoReal *billing.DodoService) *BillingHandler {
 	return &BillingHandler{
-		db:         db,
-		billing:    provider,
-		stripeReal: stripeReal,
-		dodoReal:   dodoReal,
-		isMock:     isMock,
+		db:       db,
+		billing:  provider,
+		dodoReal: dodoReal,
 	}
 }
 
@@ -61,21 +57,6 @@ func (h *BillingHandler) CheckoutSession(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plan"})
 			return
 		}
-
-	case !h.isMock && h.stripeReal != nil:
-		var stripeCustomerID *string
-		_ = h.db.QueryRow(c.Request.Context(),
-			`SELECT stripe_customer_id FROM pharmacies WHERE id = $1`, pharmacyID,
-		).Scan(&stripeCustomerID)
-		if stripeCustomerID != nil {
-			customerID = *stripeCustomerID
-		}
-
-		priceID = h.stripeReal.PriceIDForPlan(req.Plan)
-		if priceID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plan"})
-			return
-		}
 	}
 
 	url, err := h.billing.CreateCheckoutSession(c.Request.Context(), customerID, priceID, pharmacyID.String(), req.Plan)
@@ -97,14 +78,6 @@ func (h *BillingHandler) PortalSession(c *gin.Context) {
 		).Scan(&dodoCustomerID)
 		if dodoCustomerID != nil {
 			customerID = *dodoCustomerID
-		}
-	} else {
-		var stripeCustomerID *string
-		_ = h.db.QueryRow(c.Request.Context(),
-			`SELECT stripe_customer_id FROM pharmacies WHERE id = $1`, pharmacyID,
-		).Scan(&stripeCustomerID)
-		if stripeCustomerID != nil {
-			customerID = *stripeCustomerID
 		}
 	}
 
@@ -130,141 +103,6 @@ func (h *BillingHandler) Subscription(c *gin.Context) {
 	`, pharmacyID).Scan(&result.Plan, &result.SubscriptionStatus, &result.SubscriptionCurrentPeriodEnd)
 
 	c.JSON(http.StatusOK, result)
-}
-
-// stripeEvent is a minimal representation of a Stripe event for webhook processing.
-type stripeEvent struct {
-	ID   string          `json:"id"`
-	Type string          `json:"type"`
-	Data json.RawMessage `json:"data"`
-}
-
-type stripeEventData struct {
-	Object json.RawMessage `json:"object"`
-}
-
-type stripeCheckoutSession struct {
-	Customer     *stripeRef `json:"customer"`
-	Subscription *stripeRef `json:"subscription"`
-	Metadata     map[string]string `json:"metadata"`
-}
-
-type stripeSubscription struct {
-	ID                string    `json:"id"`
-	Status            string    `json:"status"`
-	CurrentPeriodEnd  int64     `json:"current_period_end"`
-}
-
-type stripeInvoice struct {
-	Customer *stripeRef `json:"customer"`
-}
-
-type stripeRef struct {
-	ID string `json:"id"`
-}
-
-func (h *BillingHandler) Webhook(c *gin.Context) {
-	if h.isMock || h.stripeReal == nil {
-		c.JSON(http.StatusOK, gin.H{"message": "mock webhook received"})
-		return
-	}
-
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body"})
-		return
-	}
-
-	sigHeader := c.GetHeader("Stripe-Signature")
-	event, err := h.stripeReal.ConstructEvent(body, sigHeader)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid signature"})
-		return
-	}
-
-	// Idempotency check
-	var alreadyProcessed bool
-	_ = h.db.QueryRow(c.Request.Context(),
-		`SELECT EXISTS(SELECT 1 FROM stripe_events WHERE id = $1)`, event.ID,
-	).Scan(&alreadyProcessed)
-	if alreadyProcessed {
-		c.JSON(http.StatusOK, gin.H{"message": "already processed"})
-		return
-	}
-
-	_, _ = h.db.Exec(c.Request.Context(),
-		`INSERT INTO stripe_events (id, type) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-		event.ID, event.Type,
-	)
-
-	var evtData stripeEventData
-	if err := json.Unmarshal(event.Data.Raw, &evtData); err != nil {
-		c.JSON(http.StatusOK, gin.H{"received": true})
-		return
-	}
-
-	switch event.Type {
-	case "checkout.session.completed":
-		var sess stripeCheckoutSession
-		if err := json.Unmarshal(evtData.Object, &sess); err == nil {
-			if pharmacyID, ok := sess.Metadata["pharmacy_id"]; ok {
-				customerID := ""
-				subID := ""
-				plan := sess.Metadata["plan"]
-				if sess.Customer != nil {
-					customerID = sess.Customer.ID
-				}
-				if sess.Subscription != nil {
-					subID = sess.Subscription.ID
-				}
-				_, _ = h.db.Exec(c.Request.Context(), `
-					UPDATE pharmacies SET
-					  stripe_customer_id = $1,
-					  stripe_subscription_id = $2,
-					  subscription_status = 'active',
-					  plan = COALESCE(NULLIF($3, ''), plan),
-					  updated_at = NOW()
-					WHERE id = $4
-				`, customerID, subID, plan, pharmacyID)
-			}
-		}
-
-	case "customer.subscription.updated":
-		var sub stripeSubscription
-		if err := json.Unmarshal(evtData.Object, &sub); err == nil {
-			_, _ = h.db.Exec(c.Request.Context(), `
-				UPDATE pharmacies SET
-				  subscription_status = $1,
-				  subscription_current_period_end = to_timestamp($2),
-				  updated_at = NOW()
-				WHERE stripe_subscription_id = $3
-			`, sub.Status, sub.CurrentPeriodEnd, sub.ID)
-		}
-
-	case "customer.subscription.deleted":
-		var sub stripeSubscription
-		if err := json.Unmarshal(evtData.Object, &sub); err == nil {
-			_, _ = h.db.Exec(c.Request.Context(), `
-				UPDATE pharmacies SET
-				  plan = 'free',
-				  subscription_status = 'canceled',
-				  stripe_subscription_id = NULL,
-				  updated_at = NOW()
-				WHERE stripe_subscription_id = $1
-			`, sub.ID)
-		}
-
-	case "invoice.payment_failed":
-		var inv stripeInvoice
-		if err := json.Unmarshal(evtData.Object, &inv); err == nil && inv.Customer != nil {
-			_, _ = h.db.Exec(c.Request.Context(), `
-				UPDATE pharmacies SET subscription_status = 'past_due', updated_at = NOW()
-				WHERE stripe_customer_id = $1
-			`, inv.Customer.ID)
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{"received": true})
 }
 
 // dodoPayload is a loosely-typed view over a Dodo Payments webhook event's
@@ -302,9 +140,8 @@ func (p dodoPayload) resolveCustomerID() string {
 }
 
 // DodoWebhook receives payment/subscription lifecycle events from Dodo
-// Payments and applies them to the paying pharmacy's plan. It's the Dodo
-// analogue of Webhook (Stripe) above, using Dodo's Standard Webhooks-style
-// HMAC signature instead of Stripe-Signature.
+// Payments and applies them to the paying pharmacy's plan, verified via
+// Dodo's Standard Webhooks-style HMAC signature.
 func (h *BillingHandler) DodoWebhook(c *gin.Context) {
 	if h.dodoReal == nil {
 		c.JSON(http.StatusOK, gin.H{"message": "dodo not configured"})
