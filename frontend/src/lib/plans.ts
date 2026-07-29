@@ -15,6 +15,7 @@ export const PLAN_BUTTON: Record<PlanKey, string> = {
 };
 
 export const PLAN_PAYMENT_LINK: Partial<Record<PlanKey, string>> = {
-  pro: "https://buy.stripe.com/test_00w9ASeCbetbfbFdajd7q01",
-  chain: "https://buy.stripe.com/test_3cIbJ08dNdp74x15HRd7q02",
+  pro: "https://test.checkout.dodopayments.com/buy/pdt_0NkFSz0tF8O0pdbqjmrQu?quantity=1",
+  chain:
+    "https://test.checkout.dodopayments.com/buy/pdt_0NkFU3fXCPK4jli7YKqTW?quantity=1&redirect_url=https://www.pharmasense.co",
 };
