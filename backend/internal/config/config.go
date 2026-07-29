@@ -30,6 +30,12 @@ type Config struct {
 	StripePricePro       string
 	StripePriceChain     string
 
+	DodoAPIKey         string
+	DodoWebhookSecret  string
+	DodoLiveMode       bool
+	DodoProductIDPro   string
+	DodoProductIDChain string
+
 	DisableCron bool
 }
 
@@ -68,6 +74,12 @@ func Load() *Config {
 		StripeWebhookSecret: getEnv("STRIPE_WEBHOOK_SECRET", ""),
 		StripePricePro:      getEnv("STRIPE_PRICE_PRO", ""),
 		StripePriceChain:    getEnv("STRIPE_PRICE_CHAIN", ""),
+
+		DodoAPIKey:         getEnv("DODO_API_KEY", ""),
+		DodoWebhookSecret:  getEnv("DODO_WEBHOOK_SECRET", ""),
+		DodoLiveMode:       getEnv("DODO_MODE", "test") == "live",
+		DodoProductIDPro:   getEnv("DODO_PRODUCT_ID_PRO", ""),
+		DodoProductIDChain: getEnv("DODO_PRODUCT_ID_CHAIN", ""),
 
 		DisableCron: disableCron,
 	}

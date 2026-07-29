@@ -50,13 +50,23 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	emailSvc := notifications.NewEmailService(cfg.ResendAPIKey, cfg.ResendFromEmail)
 	smsSvc := notifications.NewSMSService(cfg.TwilioAccountSID, cfg.TwilioAuthToken, cfg.TwilioFromNumber)
 
-	// Billing provider (real or mock)
+	// Billing provider (real or mock). Dodo Payments is the active provider
+	// when configured; Stripe remains available as a fallback/legacy path.
 	isMockBilling := cfg.StripeSecretKey == "" || len(cfg.StripeSecretKey) >= 5 && cfg.StripeSecretKey[:5] == "mock_"
 	var billingProvider billing.BillingProvider
 	var stripeReal *billing.StripeService
-	if isMockBilling {
+	var dodoReal *billing.DodoService
+	switch {
+	case cfg.DodoAPIKey != "":
+		dodoReal = billing.NewDodoService(
+			cfg.DodoAPIKey, cfg.DodoWebhookSecret,
+			cfg.DodoProductIDPro, cfg.DodoProductIDChain, cfg.FrontendOrigin,
+			cfg.DodoLiveMode,
+		)
+		billingProvider = dodoReal
+	case isMockBilling:
 		billingProvider = billing.NewMockBillingService(cfg.FrontendOrigin)
-	} else {
+	default:
 		stripeReal = billing.NewStripeService(
 			cfg.StripeSecretKey, cfg.StripeWebhookSecret,
 			cfg.StripePricePro, cfg.StripePriceChain, cfg.FrontendOrigin,
@@ -73,7 +83,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	alertH := handlers.NewAlertHandler(db)
 	reportH := handlers.NewReportHandler(db)
 	settingsH := handlers.NewSettingsHandler(db)
-	billingH := handlers.NewBillingHandler(db, billingProvider, stripeReal, isMockBilling)
+	billingH := handlers.NewBillingHandler(db, billingProvider, stripeReal, dodoReal, isMockBilling)
 
 	var adminH *handlers.AdminHandler
 	if len(digestJob) > 0 && digestJob[0] != nil {
@@ -97,6 +107,8 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 
 	// Stripe webhook (unauthenticated, signature-verified)
 	api.POST("/billing/webhook", billingH.Webhook)
+	// Dodo Payments webhook (unauthenticated, signature-verified)
+	api.POST("/billing/webhook/dodo", billingH.DodoWebhook)
 
 	// Protected routes
 	protected := api.Group("/")

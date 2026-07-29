@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api/client";
 import { cn, formatDate, planBadgeClass } from "@/lib/utils";
-import { PLAN_ORDER, PLAN_BUTTON, PLAN_PAYMENT_LINK, type PlanKey } from "@/lib/plans";
+import { PLAN_ORDER, PLAN_BUTTON, type PlanKey } from "@/lib/plans";
 import PricingCard from "@/components/billing/PricingCard";
 import { Subscription } from "@/types";
 import { toast } from "sonner";
@@ -43,6 +43,18 @@ export default function BillingPage() {
       window.location.href = res.url;
     },
     onError: () => toast.error(t("portalFailed")),
+  });
+
+  const checkoutMutation = useMutation({
+    mutationFn: (plan: PlanKey) =>
+      apiFetch<{ url: string }>("/billing/checkout-session", {
+        method: "POST",
+        body: JSON.stringify({ plan }),
+      }),
+    onSuccess: (res) => {
+      window.location.href = res.url;
+    },
+    onError: () => toast.error(t("upgradeFailed")),
   });
 
   if (isLoading) {
@@ -112,18 +124,20 @@ export default function BillingPage() {
           const canUpgrade = index > currentIndex;
           const features = t.raw(`plans.${planKey}.features`) as string[];
 
+          const isCheckingOut =
+            checkoutMutation.isPending && checkoutMutation.variables === planKey;
+
           const cta = canUpgrade ? (
-            <a
-              href={PLAN_PAYMENT_LINK[planKey]}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => checkoutMutation.mutate(planKey)}
+              disabled={checkoutMutation.isPending}
               className={cn(
                 "w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white text-center disabled:opacity-50",
                 PLAN_BUTTON[planKey]
               )}
             >
-              {t("upgrade")}
-            </a>
+              {isCheckingOut ? t("upgrade") + "…" : t("upgrade")}
+            </button>
           ) : isCurrent ? (
             <div className="w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-center text-slate-400 border border-slate-200">
               {t("currentPlanBadge")}
