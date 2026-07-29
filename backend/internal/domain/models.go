@@ -82,6 +82,7 @@ type InventoryBatch struct {
 	CreatedAt       time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
 
+	//:)
 	// Joined fields
 	ProductName  *string `json:"product_name,omitempty" db:"product_name"`
 	Category     *string `json:"category,omitempty" db:"category"`
