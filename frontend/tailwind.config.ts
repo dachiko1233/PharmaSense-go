@@ -6,6 +6,10 @@ const config: Config = {
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    // lib/ holds class-name maps (PLAN_BUTTON, PLAN_RING, planBadgeClass) whose
+    // purple utilities appear nowhere else — without this glob Tailwind never
+    // generates them and the chain plan's button/ring/badge render invisibly.
+    "./src/lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
