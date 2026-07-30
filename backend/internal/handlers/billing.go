@@ -16,14 +16,12 @@ import (
 
 type BillingHandler struct {
 	db       *pgxpool.Pool
-	billing  billing.BillingProvider
 	dodoReal *billing.DodoService
 }
 
-func NewBillingHandler(db *pgxpool.Pool, provider billing.BillingProvider, dodoReal *billing.DodoService) *BillingHandler {
+func NewBillingHandler(db *pgxpool.Pool, dodoReal *billing.DodoService) *BillingHandler {
 	return &BillingHandler{
 		db:       db,
-		billing:  provider,
 		dodoReal: dodoReal,
 	}
 }
@@ -39,48 +37,48 @@ func (h *BillingHandler) CheckoutSession(c *gin.Context) {
 		return
 	}
 
-	// With Dodo configured, hand back a hosted static checkout link carrying
-	// the pharmacy_id/plan as metadata. This needs no API key — only the
-	// product IDs — and the webhook attributes the payment via that metadata.
-	if h.dodoReal != nil {
-		productID := h.dodoReal.ProductIDForPlan(req.Plan)
-		if productID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plan"})
-			return
-		}
-		email := c.GetString("email") // set by JWT middleware; prefilled at checkout
-		checkoutURL := h.dodoReal.StaticCheckoutURL(productID, pharmacyID.String(), req.Plan, email)
-		slog.Info("dodo checkout: static link created",
-			"pharmacy_id", pharmacyID, "plan", req.Plan, "product_id", productID)
-		c.JSON(http.StatusOK, gin.H{"url": checkoutURL})
+	// Dodo is the only billing provider. Hand back a hosted static checkout
+	// link carrying the pharmacy_id/plan as metadata. This needs no API key —
+	// only the product IDs — and the webhook attributes the payment via that
+	// metadata. There is no mock fallback: if Dodo isn't configured, checkout
+	// is unavailable rather than silently redirecting to a fake page.
+	if h.dodoReal == nil {
+		slog.Error("dodo checkout: billing not configured (DODO_PRODUCT_ID_* unset)")
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "billing not configured"})
 		return
 	}
 
-	// Mock provider fallback (no Dodo product IDs configured).
-	customerID := "mock_customer_" + pharmacyID.String()[:8]
-	url, err := h.billing.CreateCheckoutSession(c.Request.Context(), customerID, req.Plan, pharmacyID.String(), req.Plan)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create checkout session"})
+	productID := h.dodoReal.ProductIDForPlan(req.Plan)
+	if productID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plan"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"url": url})
+	email := c.GetString("email") // set by JWT middleware; prefilled at checkout
+	checkoutURL := h.dodoReal.StaticCheckoutURL(productID, pharmacyID.String(), req.Plan, email)
+	slog.Info("dodo checkout: static link created",
+		"pharmacy_id", pharmacyID, "plan", req.Plan, "product_id", productID)
+	c.JSON(http.StatusOK, gin.H{"url": checkoutURL})
 }
 
 func (h *BillingHandler) PortalSession(c *gin.Context) {
 	pharmacyID := middleware.GetPharmacyID(c)
 
-	customerID := "mock_customer_" + pharmacyID.String()[:8]
-	if h.dodoReal != nil {
-		var dodoCustomerID *string
-		_ = h.db.QueryRow(c.Request.Context(),
-			`SELECT dodo_customer_id FROM pharmacies WHERE id = $1`, pharmacyID,
-		).Scan(&dodoCustomerID)
-		if dodoCustomerID != nil {
-			customerID = *dodoCustomerID
-		}
+	if h.dodoReal == nil {
+		slog.Error("dodo portal: billing not configured (DODO_PRODUCT_ID_* unset)")
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "billing not configured"})
+		return
 	}
 
-	url, err := h.billing.CreatePortalSession(c.Request.Context(), customerID)
+	var customerID string
+	var dodoCustomerID *string
+	_ = h.db.QueryRow(c.Request.Context(),
+		`SELECT dodo_customer_id FROM pharmacies WHERE id = $1`, pharmacyID,
+	).Scan(&dodoCustomerID)
+	if dodoCustomerID != nil {
+		customerID = *dodoCustomerID
+	}
+
+	url, err := h.dodoReal.CreatePortalSession(c.Request.Context(), customerID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create portal session"})
 		return

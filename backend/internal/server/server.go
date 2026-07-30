@@ -50,12 +50,12 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	emailSvc := notifications.NewEmailService(cfg.ResendAPIKey, cfg.ResendFromEmail)
 	smsSvc := notifications.NewSMSService(cfg.TwilioAccountSID, cfg.TwilioAuthToken, cfg.TwilioFromNumber)
 
-	// Billing provider (real or mock). Dodo is the active provider whenever
-	// product IDs are configured: hosted static checkout links and the
-	// signature-verified webhook need only the product IDs + webhook secret,
-	// NOT the API key (the API key is used solely for the customer portal).
-	// Falls back to mock URLs when no products are configured.
-	var billingProvider billing.BillingProvider
+	// Billing provider: Dodo Payments is the only provider. It's active
+	// whenever product IDs (or an API key) are configured — hosted static
+	// checkout links and the signature-verified webhook need only the product
+	// IDs + webhook secret, NOT the API key (the API key is used solely for
+	// the customer portal). When unconfigured, dodoReal stays nil and the
+	// billing endpoints return "billing not configured" instead of any mock.
 	var dodoReal *billing.DodoService
 	if cfg.DodoProductIDPro != "" || cfg.DodoAPIKey != "" {
 		dodoReal = billing.NewDodoService(
@@ -63,9 +63,6 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 			cfg.DodoProductIDPro, cfg.DodoProductIDChain, cfg.FrontendOrigin,
 			cfg.DodoLiveMode,
 		)
-		billingProvider = dodoReal
-	} else {
-		billingProvider = billing.NewMockBillingService(cfg.FrontendOrigin)
 	}
 
 	// Handlers
@@ -77,7 +74,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	alertH := handlers.NewAlertHandler(db)
 	reportH := handlers.NewReportHandler(db)
 	settingsH := handlers.NewSettingsHandler(db)
-	billingH := handlers.NewBillingHandler(db, billingProvider, dodoReal)
+	billingH := handlers.NewBillingHandler(db, dodoReal)
 
 	var adminH *handlers.AdminHandler
 	if len(digestJob) > 0 && digestJob[0] != nil {
