@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -63,6 +64,15 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 			cfg.DodoProductIDPro, cfg.DodoProductIDChain, cfg.FrontendOrigin,
 			cfg.DodoLiveMode,
 		)
+		slog.Info("billing: Dodo Payments ACTIVE",
+			"live", cfg.DodoLiveMode,
+			"product_pro_set", cfg.DodoProductIDPro != "",
+			"product_chain_set", cfg.DodoProductIDChain != "",
+			"webhook_secret_set", cfg.DodoWebhookSecret != "")
+	} else {
+		slog.Warn("billing: Dodo NOT configured — DODO_PRODUCT_ID_PRO/DODO_API_KEY are empty; " +
+			"checkout will return 503. Ensure the process is started with backend/.env loaded " +
+			"(run from the backend/ dir or via `make dev-backend`).")
 	}
 
 	// Handlers

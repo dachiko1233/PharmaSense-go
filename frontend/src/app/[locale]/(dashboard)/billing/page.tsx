@@ -42,7 +42,7 @@ export default function BillingPage() {
     onSuccess: (res) => {
       window.location.href = res.url;
     },
-    onError: () => toast.error(t("portalFailed")),
+    onError: (e: Error) => toast.error(e.message || t("portalFailed")),
   });
 
   const checkoutMutation = useMutation({
@@ -54,7 +54,7 @@ export default function BillingPage() {
     onSuccess: (res) => {
       window.location.href = res.url;
     },
-    onError: () => toast.error(t("upgradeFailed")),
+    onError: (e: Error) => toast.error(e.message || t("upgradeFailed")),
   });
 
   if (isLoading) {
