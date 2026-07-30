@@ -59,9 +59,17 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	// billing endpoints return "billing not configured" instead of any mock.
 	var dodoReal *billing.DodoService
 	if cfg.DodoProductIDPro != "" || cfg.DodoAPIKey != "" {
+		// FRONTEND_ORIGIN may be a comma-separated list (needed so CORS accepts
+		// both the apex and www domains). Redirect/return URLs must be a single
+		// valid origin, so use the first one rather than the whole joined string
+		// (which would yield "https://a.co,https://b.co/billing?success=true").
+		redirectOrigin := cfg.FrontendOrigin
+		if len(cfg.FrontendOrigins) > 0 {
+			redirectOrigin = cfg.FrontendOrigins[0]
+		}
 		dodoReal = billing.NewDodoService(
 			cfg.DodoAPIKey, cfg.DodoWebhookSecret,
-			cfg.DodoProductIDPro, cfg.DodoProductIDChain, cfg.FrontendOrigin,
+			cfg.DodoProductIDPro, cfg.DodoProductIDChain, redirectOrigin,
 			cfg.DodoLiveMode,
 		)
 		slog.Info("billing: Dodo Payments ACTIVE",
