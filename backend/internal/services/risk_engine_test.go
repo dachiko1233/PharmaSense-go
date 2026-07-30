@@ -115,10 +115,16 @@ func TestCalculateRisk_Expired(t *testing.T) {
 		Today:           today,
 	}
 	result := CalculateRisk(input)
-	if result.DaysUntilExpiry != 0 {
-		t.Errorf("expected 0 days for expired, got %d", result.DaysUntilExpiry)
+	// Expired items keep their negative day count (not clamped to 0) and get
+	// the distinct EXPIRED risk level, with the entire remaining stock booked
+	// as loss.
+	if result.DaysUntilExpiry != -5 {
+		t.Errorf("expected -5 days for expired, got %d", result.DaysUntilExpiry)
 	}
-	if result.RiskLevel != domain.RiskLevelCritical {
-		t.Errorf("expected CRITICAL for expired, got %s", result.RiskLevel)
+	if result.RiskLevel != domain.RiskLevelExpired {
+		t.Errorf("expected EXPIRED for expired, got %s", result.RiskLevel)
+	}
+	if result.EstimatedLoss != 50.00 {
+		t.Errorf("expected full-stock loss of 50.00, got %.2f", result.EstimatedLoss)
 	}
 }

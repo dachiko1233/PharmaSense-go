@@ -10,19 +10,27 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
 
 const (
+	// API base (for authenticated REST calls like the customer portal).
 	dodoTestBaseURL = "https://test.dodopayments.com"
 	dodoLiveBaseURL = "https://live.dodopayments.com"
+
+	// Hosted-checkout base (for the static /buy/<product> payment links).
+	// These need no API key and accept metadata_*/email query params.
+	dodoTestCheckoutHost = "https://test.checkout.dodopayments.com"
+	dodoLiveCheckoutHost = "https://checkout.dodopayments.com"
 )
 
 type DodoService struct {
 	apiKey         string
 	webhookSecret  string
 	baseURL        string
+	checkoutHost   string
 	productPro     string
 	productChain   string
 	frontendOrigin string
@@ -31,18 +39,41 @@ type DodoService struct {
 
 func NewDodoService(apiKey, webhookSecret, productPro, productChain, frontendOrigin string, live bool) *DodoService {
 	baseURL := dodoTestBaseURL
+	checkoutHost := dodoTestCheckoutHost
 	if live {
 		baseURL = dodoLiveBaseURL
+		checkoutHost = dodoLiveCheckoutHost
 	}
 	return &DodoService{
 		apiKey:         apiKey,
 		webhookSecret:  webhookSecret,
 		baseURL:        baseURL,
+		checkoutHost:   checkoutHost,
 		productPro:     productPro,
 		productChain:   productChain,
 		frontendOrigin: frontendOrigin,
 		httpClient:     &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+// StaticCheckoutURL builds a hosted Dodo checkout link for the given product,
+// carrying pharmacy_id and plan as metadata so the webhook can attribute the
+// payment to the right pharmacy, and prefilling the customer email (which also
+// backs the webhook's email fallback). Static links require no API key.
+//
+// Produces, e.g.:
+//
+//	https://test.checkout.dodopayments.com/buy/pdt_xxx?quantity=1&metadata_pharmacy_id=..&metadata_plan=pro&email=..&redirect_url=..
+func (s *DodoService) StaticCheckoutURL(productID, pharmacyID, plan, email string) string {
+	q := url.Values{}
+	q.Set("quantity", "1")
+	q.Set("metadata_pharmacy_id", pharmacyID)
+	q.Set("metadata_plan", plan)
+	if email != "" {
+		q.Set("email", email)
+	}
+	q.Set("redirect_url", s.frontendOrigin+"/billing?success=true")
+	return fmt.Sprintf("%s/buy/%s?%s", s.checkoutHost, productID, q.Encode())
 }
 
 // ProductIDForPlan maps an internal plan key to the configured Dodo product id.
@@ -52,6 +83,20 @@ func (s *DodoService) ProductIDForPlan(plan string) string {
 		return s.productPro
 	case "chain":
 		return s.productChain
+	default:
+		return ""
+	}
+}
+
+// PlanForProductID is the reverse of ProductIDForPlan, used as a fallback to
+// derive the plan from a webhook's product_id when checkout metadata is
+// missing (e.g. a checkout created outside CreateCheckoutSession).
+func (s *DodoService) PlanForProductID(productID string) string {
+	switch productID {
+	case s.productPro:
+		return "pro"
+	case s.productChain:
+		return "chain"
 	default:
 		return ""
 	}
@@ -184,11 +229,16 @@ func (s *DodoService) doJSON(ctx context.Context, method, path string, body any,
 // so callers should extract fields defensively from Data rather than assume
 // a fixed schema, and consult logged raw payloads to refine this as needed.
 type DodoEvent struct {
-	ID        string          `json:"business_id"`
-	Type      string          `json:"type"`
-	Timestamp string          `json:"timestamp"`
-	Data      json.RawMessage `json:"data"`
-	Raw       []byte          `json:"-"`
+	// ID is the per-event id from the "webhook-id" header (used for
+	// idempotency), NOT the body's business_id field — business_id
+	// identifies the merchant account and is identical on every webhook
+	// this account ever receives, so it must never be used as a dedup key.
+	ID         string          `json:"-"`
+	BusinessID string          `json:"business_id"`
+	Type       string          `json:"type"`
+	Timestamp  string          `json:"timestamp"`
+	Data       json.RawMessage `json:"data"`
+	Raw        []byte          `json:"-"`
 }
 
 // webhookMaxAge guards against replaying old, previously-valid signed
@@ -247,6 +297,7 @@ func (s *DodoService) ConstructEvent(body []byte, id, timestamp, signatureHeader
 	if err := json.Unmarshal(body, &evt); err != nil {
 		return DodoEvent{}, fmt.Errorf("unmarshal event: %w", err)
 	}
+	evt.ID = id
 	evt.Raw = body
 	return evt, nil
 }

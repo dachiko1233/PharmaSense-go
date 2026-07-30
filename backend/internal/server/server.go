@@ -50,11 +50,14 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	emailSvc := notifications.NewEmailService(cfg.ResendAPIKey, cfg.ResendFromEmail)
 	smsSvc := notifications.NewSMSService(cfg.TwilioAccountSID, cfg.TwilioAuthToken, cfg.TwilioFromNumber)
 
-	// Billing provider (real or mock). Dodo Payments is the active provider
-	// when configured; otherwise checkout/portal calls return mock URLs.
+	// Billing provider (real or mock). Dodo is the active provider whenever
+	// product IDs are configured: hosted static checkout links and the
+	// signature-verified webhook need only the product IDs + webhook secret,
+	// NOT the API key (the API key is used solely for the customer portal).
+	// Falls back to mock URLs when no products are configured.
 	var billingProvider billing.BillingProvider
 	var dodoReal *billing.DodoService
-	if cfg.DodoAPIKey != "" {
+	if cfg.DodoProductIDPro != "" || cfg.DodoAPIKey != "" {
 		dodoReal = billing.NewDodoService(
 			cfg.DodoAPIKey, cfg.DodoWebhookSecret,
 			cfg.DodoProductIDPro, cfg.DodoProductIDChain, cfg.FrontendOrigin,
