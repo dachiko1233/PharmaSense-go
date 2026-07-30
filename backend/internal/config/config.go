@@ -35,7 +35,23 @@ type Config struct {
 }
 
 func Load() *Config {
-	_ = godotenv.Load()
+	// Load environment from .env in a CWD-independent way. godotenv.Load()
+	// reads "./.env" relative to the working directory, so launching from the
+	// repo root (instead of backend/) would silently miss backend/.env and
+	// leave Dodo unconfigured ("billing not configured"). Try the common
+	// locations, and an explicit ENV_FILE override, loading the first that
+	// exists. Already-set real env vars always win (godotenv never overrides).
+	candidates := []string{}
+	if p := os.Getenv("ENV_FILE"); p != "" {
+		candidates = append(candidates, p)
+	}
+	candidates = append(candidates, ".env", "backend/.env", "../.env")
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			_ = godotenv.Load(p)
+			break
+		}
+	}
 
 	hours, _ := strconv.Atoi(getEnv("JWT_EXPIRY_HOURS", "24"))
 	disableCron := getEnv("DISABLE_CRON", "false") == "true"
