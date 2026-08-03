@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"pharmasense/internal/domain"
 	"pharmasense/internal/middleware"
 )
 
@@ -28,6 +29,46 @@ type InventoryHandler struct {
 
 func NewInventoryHandler(db *pgxpool.Pool) *InventoryHandler {
 	return &InventoryHandler{db: db}
+}
+
+// inventoryCapacity reports the pharmacy's enforced inventory-batch cap.
+// capped is false for unlimited (paid) plans. When capped, `used` is the
+// current inventory_batches count and `limit` the plan maximum, so a caller
+// adding N rows should reject when used+N > limit.
+func (h *InventoryHandler) inventoryCapacity(ctx context.Context, pharmacyID uuid.UUID) (limit, used int, capped bool, err error) {
+	var plan string
+	if err = h.db.QueryRow(ctx, `SELECT plan FROM pharmacies WHERE id = $1`, pharmacyID).Scan(&plan); err != nil {
+		return 0, 0, false, err
+	}
+	limit = domain.MaxInventoryBatches(plan)
+	if limit == domain.Unlimited {
+		return 0, 0, false, nil
+	}
+	if err = h.db.QueryRow(ctx, `SELECT COUNT(*) FROM inventory_batches WHERE pharmacy_id = $1`, pharmacyID).Scan(&used); err != nil {
+		return 0, 0, false, err
+	}
+	return limit, used, true, nil
+}
+
+// enforceInventoryLimit checks whether `adding` more batches would exceed the
+// pharmacy's plan cap. It writes a 402 response and returns false when the add
+// must be blocked; returns true (and writes nothing) when the add is allowed.
+func (h *InventoryHandler) enforceInventoryLimit(c *gin.Context, pharmacyID uuid.UUID, adding int) bool {
+	limit, used, capped, err := h.inventoryCapacity(c.Request.Context(), pharmacyID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check plan limit"})
+		return false
+	}
+	if capped && used+adding > limit {
+		c.AbortWithStatusJSON(http.StatusPaymentRequired, gin.H{
+			"error":     "inventory limit reached for your plan",
+			"limit":     limit,
+			"current":   used,
+			"attempted": adding,
+		})
+		return false
+	}
+	return true
 }
 
 // ── List ──────────────────────────────────────────────────────────────────────
@@ -157,6 +198,10 @@ func (h *InventoryHandler) Create(c *gin.Context) {
 		return
 	}
 
+	if !h.enforceInventoryLimit(c, pharmacyID, 1) {
+		return
+	}
+
 	expiryDate, err := time.Parse("2006-01-02", req.ExpiryDate)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid expiry_date format (use YYYY-MM-DD)"})
@@ -215,6 +260,10 @@ func (h *InventoryHandler) CreateManual(c *gin.Context) {
 	var req createManualProductRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": humanizeManualProductError(err)})
+		return
+	}
+
+	if !h.enforceInventoryLimit(c, pharmacyID, 1) {
 		return
 	}
 
@@ -462,6 +511,12 @@ func (h *InventoryHandler) Import(c *gin.Context) {
 	// If we have only fatal errors (missing columns, empty file), return 400
 	if total == 0 && len(parseErrors) > 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": parseErrors[0]})
+		return
+	}
+
+	// Reject the whole import if it would push the pharmacy over its plan cap,
+	// rather than importing a partial set.
+	if !h.enforceInventoryLimit(c, pharmacyID, len(batches)) {
 		return
 	}
 

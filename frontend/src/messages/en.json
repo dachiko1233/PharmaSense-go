@@ -247,8 +247,8 @@
         "price": "€0",
         "features": [
           "1 pharmacy",
-          "100 inventory items",
-          "No SMS alerts",
+          "500 inventory items",
+          "Email alerts (10/month)",
           "No daily digest"
         ]
       },

@@ -50,7 +50,6 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	// Services
 	authSvc := services.NewAuthService(db, cfg.JWTSecret, cfg.JWTExpiryHours, cfg.AppURL)
 	emailSvc := notifications.NewEmailService(cfg.ResendAPIKey, cfg.ResendFromEmail)
-	smsSvc := notifications.NewSMSService(cfg.TwilioAccountSID, cfg.TwilioAuthToken, cfg.TwilioFromNumber)
 
 	// Billing provider: Dodo Payments is the only provider. It's active
 	// whenever product IDs (or an API key) are configured — hosted static
@@ -123,9 +122,6 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	if len(digestJob) > 0 && digestJob[0] != nil {
 		adminH = handlers.NewAdminHandler(db, digestJob[0])
 	}
-
-	// Suppress unused variable warning
-	_ = smsSvc
 
 	// api := r.Group("/api/v1")
 

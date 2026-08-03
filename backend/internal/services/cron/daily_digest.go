@@ -9,6 +9,7 @@ import (
 	"github.com/go-co-op/gocron/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"pharmasense/internal/domain"
 	"pharmasense/internal/services/notifications"
 )
 
@@ -97,6 +98,7 @@ func (j *DigestJob) RunWithStats(ctx context.Context, filterPharmacyID string, f
 		    p.id,
 		    p.name,
 		    p.language,
+		    p.plan,
 		    COALESCE(COUNT(lr.id) FILTER (WHERE lr.risk_level = 'EXPIRED'), 0)                               AS expired_count,
 		    COALESCE(COUNT(lr.id) FILTER (WHERE lr.risk_level = 'CRITICAL' AND lr.days_until_expiry <= 7), 0) AS week_count,
 		    COALESCE(COUNT(lr.id) FILTER (WHERE lr.risk_level = 'CRITICAL'), 0)                              AS critical_count,
@@ -113,10 +115,10 @@ func (j *DigestJob) RunWithStats(ctx context.Context, filterPharmacyID string, f
 		LEFT JOIN latest_risks lr ON lr.pharmacy_id = p.id
 		WHERE u.email_verified = true
 		  AND u.daily_digest_enabled = true
-		  AND p.plan IN ('pro','chain')
+		  AND p.plan IN ('free','pro','chain')
 		  %s
 		  %s
-		GROUP BY u.id, u.email, u.full_name, p.id, p.name, p.language
+		GROUP BY u.id, u.email, u.full_name, p.id, p.name, p.language, p.plan
 	`, pharmacyFilter, hourFilter)
 
 	rows, err := j.db.Query(ctx, query, args...)
@@ -133,6 +135,7 @@ func (j *DigestJob) RunWithStats(ctx context.Context, filterPharmacyID string, f
 		pharmacyID   string
 		pharmacyName string
 		language     string
+		plan         string
 		expiredCount int
 		weekCount    int
 		criticalCount int
@@ -146,7 +149,7 @@ func (j *DigestJob) RunWithStats(ctx context.Context, filterPharmacyID string, f
 		var r recipientRow
 		if err := rows.Scan(
 			&r.userID, &r.email, &r.fullName,
-			&r.pharmacyID, &r.pharmacyName, &r.language,
+			&r.pharmacyID, &r.pharmacyName, &r.language, &r.plan,
 			&r.expiredCount, &r.weekCount, &r.criticalCount, &r.highCount,
 			&r.totalLoss, &r.savings,
 		); err != nil {
@@ -160,7 +163,20 @@ func (j *DigestJob) RunWithStats(ctx context.Context, filterPharmacyID string, f
 	}
 	rows.Close()
 
+	skipped := 0
 	for _, r := range recipients {
+		// Enforce the Free plan's monthly email-alert cap before doing any
+		// work. Paid plans return Unlimited and are never counted or blocked.
+		if limit := domain.MaxEmailAlertsPerMonth(r.plan); limit != domain.Unlimited {
+			if used := j.emailAlertsSentThisMonth(ctx, r.userID); used >= limit {
+				slog.Info("daily digest: monthly email-alert limit reached, skipping",
+					"user_id", r.userID, "pharmacy_id", r.pharmacyID, "plan", r.plan, "used", used, "limit", limit)
+				j.logNotification(ctx, r.userID, r.pharmacyID, r.email, "skipped_limit", nil)
+				skipped++
+				continue
+			}
+		}
+
 		topItems, err := j.fetchTopItems(ctx, r.pharmacyID, r.language)
 		if err != nil {
 			slog.Warn("daily digest: top items query failed", "pharmacy_id", r.pharmacyID, "error", err)
@@ -196,7 +212,30 @@ func (j *DigestJob) RunWithStats(ctx context.Context, filterPharmacyID string, f
 		j.logNotification(ctx, r.userID, r.pharmacyID, r.email, status, errMsg)
 	}
 
+	if skipped > 0 {
+		slog.Info("daily digest: recipients skipped for monthly email-alert limit", "skipped", skipped)
+	}
 	return sent, failed
+}
+
+// emailAlertsSentThisMonth counts alert emails successfully sent to a user in
+// the current calendar month. The month boundary makes the quota reset
+// automatically on the 1st. On a query error it fails open (returns 0) so a
+// transient DB blip doesn't silently suppress a user's alerts.
+func (j *DigestJob) emailAlertsSentThisMonth(ctx context.Context, userID string) int {
+	var n int
+	err := j.db.QueryRow(ctx, `
+		SELECT COUNT(*) FROM notification_log
+		WHERE user_id = $1
+		  AND channel = 'email'
+		  AND status = 'sent'
+		  AND sent_at >= date_trunc('month', now())
+	`, userID).Scan(&n)
+	if err != nil {
+		slog.Warn("daily digest: failed to count monthly email alerts", "user_id", userID, "error", err)
+		return 0
+	}
+	return n
 }
 
 // fetchTopItems returns the top 5 most urgent at-risk products for a pharmacy.

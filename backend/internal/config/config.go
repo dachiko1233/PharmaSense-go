@@ -21,10 +21,6 @@ type Config struct {
 	ResendAPIKey    string
 	ResendFromEmail string
 
-	TwilioAccountSID string
-	TwilioAuthToken  string
-	TwilioFromNumber string
-
 	DodoAPIKey         string
 	DodoWebhookSecret  string
 	DodoLiveMode       bool
@@ -76,10 +72,6 @@ func Load() *Config {
 
 		ResendAPIKey:    getEnv("RESEND_API_KEY", ""),
 		ResendFromEmail: getEnv("RESEND_FROM_EMAIL", "noreply@pharmasense.cy"),
-
-		TwilioAccountSID: getEnv("TWILIO_ACCOUNT_SID", ""),
-		TwilioAuthToken:  getEnv("TWILIO_AUTH_TOKEN", ""),
-		TwilioFromNumber: getEnv("TWILIO_FROM_NUMBER", ""),
 
 		DodoAPIKey:        getEnv("DODO_API_KEY", ""),
 		DodoWebhookSecret: getEnv("DODO_WEBHOOK_SECRET", ""),
