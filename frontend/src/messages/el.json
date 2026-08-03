@@ -183,7 +183,8 @@
     "importing": "Εισαγωγή...",
     "success": "Η εισαγωγή ολοκληρώθηκε",
     "errors": "σφάλματα",
-    "csvFormat": "Απαιτούμενες στήλες: name, expiry_date, quantity, purchase_price, selling_price. Αποδεκτές ημερομηνίες: ΕΕΕΕ-ΜΜ-ΗΗ ή ΗΗ/ΜΜ/ΕΕΕΕ. Προαιρετικά: barcode, batch_number, category, manufacturer, supplier. Κατεβάστε το πρότυπο για την πλήρη μορφή."
+    "csvFormat": "Απαιτούμενες στήλες: name, expiry_date, quantity, purchase_price, selling_price. Αποδεκτές ημερομηνίες: ΕΕΕΕ-ΜΜ-ΗΗ ή ΗΗ/ΜΜ/ΕΕΕΕ. Προαιρετικά: barcode, batch_number, category, manufacturer, supplier. Κατεβάστε το πρότυπο για την πλήρη μορφή.",
+    "freeCapNote": "Δωρεάν πλάνο: η εισαγωγή CSV είναι διαθέσιμη, με όριο 500 είδη αποθέματος συνολικά. Οι γραμμές πέραν του ορίου παραλείπονται — αναβαθμίστε για απεριόριστο απόθεμα."
   },
   "chain": {
     "title": "Επισκόπηση Αλυσίδας",

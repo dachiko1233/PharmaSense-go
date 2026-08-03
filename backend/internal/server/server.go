@@ -203,18 +203,10 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	protected.DELETE("/inventory/:id", invH.Delete)
 	protected.DELETE("/inventory", invH.DeleteAll)
 
-	// CSV import — Pro plan required
-	proGroup := protected.Group("/")
-	proGroup.Use(func(c *gin.Context) {
-		// Inject plan from DB for plan middleware
-		pharmacyID := middleware.GetPharmacyID(c)
-		var plan string
-		_ = db.QueryRow(c.Request.Context(), `SELECT plan FROM pharmacies WHERE id = $1`, pharmacyID).Scan(&plan)
-		c.Set("plan", plan)
-		c.Next()
-	})
-	proGroup.Use(middleware.RequirePlan("pro"))
-	proGroup.POST("/inventory/import", invH.Import)
+	// CSV import — available to all plans. The Free plan's 500-item cap is
+	// enforced inside the handler (partial import up to the remaining
+	// allowance), so no plan gate is applied here.
+	protected.POST("/inventory/import", invH.Import)
 
 	// Sales
 	protected.GET("/sales/stats", func(c *gin.Context) {

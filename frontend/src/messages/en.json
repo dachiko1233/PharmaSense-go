@@ -183,7 +183,8 @@
     "importing": "Importing...",
     "success": "Import complete",
     "errors": "errors",
-    "csvFormat": "Required columns: name, expiry_date, quantity, purchase_price, selling_price. Dates accepted: YYYY-MM-DD or DD/MM/YYYY. Optional: barcode, batch_number, category, manufacturer, supplier. Download the template for the full format."
+    "csvFormat": "Required columns: name, expiry_date, quantity, purchase_price, selling_price. Dates accepted: YYYY-MM-DD or DD/MM/YYYY. Optional: barcode, batch_number, category, manufacturer, supplier. Download the template for the full format.",
+    "freeCapNote": "Free plan: CSV import is available, capped at 500 inventory items total. Rows beyond the limit are skipped — upgrade for unlimited inventory."
   },
   "chain": {
     "title": "Chain Overview",

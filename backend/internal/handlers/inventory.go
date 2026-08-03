@@ -514,16 +514,33 @@ func (h *InventoryHandler) Import(c *gin.Context) {
 		return
 	}
 
-	// Reject the whole import if it would push the pharmacy over its plan cap,
-	// rather than importing a partial set.
-	if !h.enforceInventoryLimit(c, pharmacyID, len(batches)) {
+	// Free plan is capped at a fixed number of inventory items. Rather than
+	// blocking Free users from CSV import entirely, fill up to their remaining
+	// allowance and report how many rows were skipped. Paid plans are unlimited
+	// (capped == false), so remaining stays -1 and no row is skipped.
+	limit, used, capped, capErr := h.inventoryCapacity(c.Request.Context(), pharmacyID)
+	if capErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check plan limit"})
 		return
+	}
+	remaining := -1 // -1 == unlimited
+	if capped {
+		if remaining = limit - used; remaining < 0 {
+			remaining = 0
+		}
 	}
 
 	imported := 0
+	skippedForLimit := 0
 	var insertErrors []string
 
 	for _, b := range batches {
+		// Stop importing once the plan allowance is exhausted; count the rest
+		// as skipped so the response can report imported-vs-skipped.
+		if capped && imported >= remaining {
+			skippedForLimit++
+			continue
+		}
 		productID, err := h.findOrCreateProduct(c.Request.Context(), b)
 		if err != nil {
 			insertErrors = append(insertErrors, fmt.Sprintf("row %d: failed to save product '%s': %v", b.RowNum, b.ProductName, err))
@@ -558,11 +575,20 @@ func (h *InventoryHandler) Import(c *gin.Context) {
 		allErrors = []string{}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"imported": imported,
 		"errors":   allErrors,
 		"total":    total,
-	})
+	}
+	if skippedForLimit > 0 {
+		resp["skipped_limit"] = skippedForLimit
+		resp["limit"] = limit
+		resp["message"] = fmt.Sprintf(
+			"Imported %d item(s). %d row(s) skipped — the Free plan is capped at %d inventory items total.",
+			imported, skippedForLimit, limit,
+		)
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // findOrCreateProduct looks up a product by barcode or name, creating it if absent.

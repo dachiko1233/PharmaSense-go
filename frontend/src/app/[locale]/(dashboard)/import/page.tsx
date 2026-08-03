@@ -1,21 +1,29 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { apiUrl } from "@/lib/api/client";
+import { apiFetch, apiUrl } from "@/lib/api/client";
 import { Upload, FileText, Download, AlertCircle, CheckCircle } from "lucide-react";
 
 interface ImportResult {
   imported: number;
   total: number;
   errors: string[];
+  skipped_limit?: number;
+  limit?: number;
+  message?: string;
 }
 
 export default function ImportPage() {
   const t = useTranslations("import");
   const queryClient = useQueryClient();
+  const { data: sub } = useQuery<{ plan: string }>({
+    queryKey: ["billing-subscription"],
+    queryFn: () => apiFetch("/billing/subscription"),
+  });
+  const isFree = sub?.plan === "free";
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -101,6 +109,16 @@ export default function ImportPage() {
         </div>
       </div>
 
+      {/* Free plan cap note */}
+      {isFree && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-800">
+          <div className="flex gap-2">
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <div>{t("freeCapNote")}</div>
+          </div>
+        </div>
+      )}
+
       {/* Drop zone */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -173,6 +191,11 @@ export default function ImportPage() {
               <div className="text-xs text-slate-500">{t("errors")}</div>
             </div>
           </div>
+          {result.message && (
+            <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+              {result.message}
+            </div>
+          )}
           {result.errors.length > 0 && (
             <div className="bg-red-50 rounded-lg p-3">
               <p className="text-xs font-medium text-red-700 mb-2">Errors:</p>
