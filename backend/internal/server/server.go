@@ -3,6 +3,7 @@ package server
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -74,9 +75,33 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 		)
 		slog.Info("billing: Dodo Payments ACTIVE",
 			"live", cfg.DodoLiveMode,
+			"redirect_origin", redirectOrigin,
 			"product_pro_set", cfg.DodoProductIDPro != "",
 			"product_chain_set", cfg.DodoProductIDChain != "",
 			"webhook_secret_set", cfg.DodoWebhookSecret != "")
+
+		// Guard the live-mode misconfigurations that silently break checkout.
+		// The post-payment redirect_url is built from redirectOrigin, so a
+		// localhost/empty/non-HTTPS origin sends real customers to an
+		// unreachable page after paying — Dodo shows its receipt and the app
+		// "hangs" on a spinner, never returning. These are config (env) issues,
+		// not code bugs, so surface them loudly at boot instead of at pay time.
+		if cfg.DodoLiveMode {
+			if redirectOrigin == "" || strings.Contains(redirectOrigin, "localhost") || strings.HasPrefix(redirectOrigin, "http://") {
+				slog.Error("billing: DODO_MODE=live but FRONTEND_ORIGIN is not a public HTTPS URL — "+
+					"the post-payment redirect will hang. Set FRONTEND_ORIGIN to your production site, e.g. https://pharmasense.co.",
+					"redirect_origin", redirectOrigin)
+			}
+			if strings.Contains(cfg.DodoProductIDPro, "/") || strings.Contains(cfg.DodoProductIDChain, "/") {
+				slog.Error("billing: DODO_PRODUCT_ID_* must be bare product ids (pdt_...), not full /buy/ URLs — "+
+					"a full URL corrupts the generated checkout link.",
+					"product_pro", cfg.DodoProductIDPro, "product_chain", cfg.DodoProductIDChain)
+			}
+			if cfg.DodoWebhookSecret == "" {
+				slog.Error("billing: DODO_MODE=live but DODO_WEBHOOK_SECRET is empty — " +
+					"webhook signatures will fail and paid plans will not upgrade.")
+			}
+		}
 	} else {
 		slog.Warn("billing: Dodo NOT configured — DODO_PRODUCT_ID_PRO/DODO_API_KEY are empty; " +
 			"checkout will return 503. Ensure the process is started with backend/.env loaded " +
