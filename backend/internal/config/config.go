@@ -81,11 +81,14 @@ func Load() *Config {
 		TwilioAuthToken:  getEnv("TWILIO_AUTH_TOKEN", ""),
 		TwilioFromNumber: getEnv("TWILIO_FROM_NUMBER", ""),
 
-		DodoAPIKey:         getEnv("DODO_API_KEY", "xaBdyj41batyVVRx.egWdMXDd1x7pADCG5yU4_4xVbTctUGK7obLqlhHggeelSOBV"),
-		DodoWebhookSecret:  getEnv("DODO_WEBHOOK_SECRET", "whsec_ItJnKspbcgDWwJxEAiIRokzOGcnL3O9L"),
-		DodoLiveMode:       getEnv("DODO_MODE", "test") == "live",
-		DodoProductIDPro:   getEnv("DODO_PRODUCT_ID_PRO", "https://checkout.dodopayments.com/buy/pdt_0NkaMYSF8boWeilxs1QU6?quantity=1"),
-		DodoProductIDChain: getEnv("DODO_PRODUCT_ID_CHAIN", "https://checkout.dodopayments.com/buy/pdt_0NkaMYSF8boWeilxs1QU6?quantity=1"),
+		DodoAPIKey:        getEnv("DODO_API_KEY", ""),
+		DodoWebhookSecret: getEnv("DODO_WEBHOOK_SECRET", ""),
+		// Case-insensitive + trimmed so "live", "Live", or " LIVE " all enable
+		// live mode. A strict "== live" compare silently kept a "Live" value in
+		// test mode, pointing checkout at the test host.
+		DodoLiveMode:       strings.EqualFold(strings.TrimSpace(getEnv("DODO_MODE", "test")), "live"),
+		DodoProductIDPro:   getEnv("DODO_PRODUCT_ID_PRO", ""),
+		DodoProductIDChain: getEnv("DODO_PRODUCT_ID_CHAIN", ""),
 
 		DisableCron: disableCron,
 	}
