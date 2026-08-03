@@ -81,11 +81,11 @@ func Load() *Config {
 		TwilioAuthToken:  getEnv("TWILIO_AUTH_TOKEN", ""),
 		TwilioFromNumber: getEnv("TWILIO_FROM_NUMBER", ""),
 
-		DodoAPIKey:         getEnv("DODO_API_KEY", ""),
-		DodoWebhookSecret:  getEnv("DODO_WEBHOOK_SECRET", ""),
+		DodoAPIKey:         getEnv("DODO_API_KEY", "mWbv36Cy7wlMqA-9.x9y6uN9v6iBCYhOyV6iEbmV4wQi0lTk8n-CbH9F4Ut-aEtJ0"),
+		DodoWebhookSecret:  getEnv("DODO_WEBHOOK_SECRET", "whsec_rdnsE4PEfftQBMKmMm/15+oT3vUPb3Av"),
 		DodoLiveMode:       getEnv("DODO_MODE", "test") == "live",
-		DodoProductIDPro:   getEnv("DODO_PRODUCT_ID_PRO", ""),
-		DodoProductIDChain: getEnv("DODO_PRODUCT_ID_CHAIN", ""),
+		DodoProductIDPro:   getEnv("DODO_PRODUCT_ID_PRO", "https://test.checkout.dodopayments.com/buy/pdt_0NkFSz0tF8O0pdbqjmrQu?quantity=1"),
+		DodoProductIDChain: getEnv("DODO_PRODUCT_ID_CHAIN", "https://test.checkout.dodopayments.com/buy/pdt_0NkFU3fXCPK4jli7YKqTW?quantity=1"),
 
 		DisableCron: disableCron,
 	}
