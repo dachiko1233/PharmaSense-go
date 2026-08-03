@@ -137,6 +137,10 @@
       "quantityLabel": "Quantity to return",
       "quantityHelp": "How many units are you returning?",
       "notesLabel": "Reason / Notes (optional)",
+      "supplierEmailLabel": "Supplier email",
+      "supplierEmailPlaceholder": "supplier@example.com",
+      "supplierEmailHelp": "We'll email this supplier a return notification. Leave blank to skip.",
+      "supplierEmailInvalid": "Enter a valid email address",
       "confirm": "Confirm Return",
       "cancel": "Cancel",
       "success": "Returned {quantity} units. Refund: {amount}"

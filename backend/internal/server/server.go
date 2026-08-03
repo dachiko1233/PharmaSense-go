@@ -113,7 +113,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	chainH := handlers.NewChainHandler(db)
 	invH := handlers.NewInventoryHandler(db)
 	riskH := handlers.NewRiskHandler(db)
-	alertH := handlers.NewAlertHandler(db)
+	alertH := handlers.NewAlertHandler(db, emailSvc)
 	reportH := handlers.NewReportHandler(db)
 	settingsH := handlers.NewSettingsHandler(db)
 	billingH := handlers.NewBillingHandler(db, dodoReal)

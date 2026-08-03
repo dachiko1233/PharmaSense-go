@@ -137,6 +137,10 @@
       "quantityLabel": "Ποσότητα προς επιστροφή",
       "quantityHelp": "Πόσες μονάδες επιστρέφετε;",
       "notesLabel": "Λόγος / Σημειώσεις (προαιρετικό)",
+      "supplierEmailLabel": "Email προμηθευτή",
+      "supplierEmailPlaceholder": "supplier@example.com",
+      "supplierEmailHelp": "Θα στείλουμε στον προμηθευτή ειδοποίηση επιστροφής. Αφήστε το κενό για παράλειψη.",
+      "supplierEmailInvalid": "Εισαγάγετε έγκυρη διεύθυνση email",
       "confirm": "Επιβεβαίωση επιστροφής",
       "cancel": "Άκυρο",
       "success": "Επιστράφηκαν {quantity} μονάδες. Επιστροφή χρημάτων: {amount}"

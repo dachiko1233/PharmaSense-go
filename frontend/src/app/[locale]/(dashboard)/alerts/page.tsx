@@ -25,6 +25,7 @@ interface AlertRow {
   expiry_date: string;
   current_quantity: number;
   purchase_price: number;
+  supplier_email?: string;
 }
 
 interface ReturnActionResponse {
@@ -32,6 +33,8 @@ interface ReturnActionResponse {
   message: string;
   refund_value: number;
   quantity: number;
+  email_sent?: boolean;
+  email_error?: string;
 }
 
 export default function AlertsPage() {
@@ -66,14 +69,19 @@ export default function AlertsPage() {
   });
 
   const returnMutation = useMutation({
-    mutationFn: ({ batchId, quantity, notes }: { batchId: string; quantity: number; notes?: string }) =>
+    mutationFn: ({ batchId, quantity, notes, supplierEmail }: { batchId: string; quantity: number; notes?: string; supplierEmail?: string }) =>
       apiFetch<ReturnActionResponse>(`/alerts/${batchId}/action`, {
         method: "POST",
-        body: JSON.stringify({ action_type: "RETURN", quantity, notes }),
+        body: JSON.stringify({ action_type: "RETURN", quantity, notes, supplier_email: supplierEmail }),
       }),
     onSuccess: (data) => {
       const refundStr = fmtCurrency(data.refund_value);
       toast.success(tModal("success", { quantity: data.quantity, amount: refundStr }));
+      // The return itself succeeded; the supplier email is best-effort, so a
+      // send failure is surfaced as a non-blocking warning.
+      if (data.email_error) {
+        toast.warning(data.email_error);
+      }
       setReturnTarget(null);
       queryClient.invalidateQueries({ queryKey: ["alerts"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -83,9 +91,9 @@ export default function AlertsPage() {
     },
   });
 
-  const handleReturnConfirm = (quantity: number, notes?: string) => {
+  const handleReturnConfirm = (quantity: number, notes?: string, supplierEmail?: string) => {
     if (!returnTarget) return;
-    returnMutation.mutate({ batchId: returnTarget.batch_id, quantity, notes });
+    returnMutation.mutate({ batchId: returnTarget.batch_id, quantity, notes, supplierEmail });
   };
 
   const tabs: { label: string; value: Tab }[] = [
@@ -262,6 +270,7 @@ export default function AlertsPage() {
         productName={returnTarget?.product_name ?? ""}
         currentQuantity={returnTarget?.current_quantity ?? 1}
         purchasePrice={returnTarget?.purchase_price ?? 0}
+        supplierEmail={returnTarget?.supplier_email ?? ""}
         locale={locale as string}
         isLoading={returnMutation.isPending}
       />

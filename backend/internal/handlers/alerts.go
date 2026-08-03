@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -11,14 +13,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"pharmasense/internal/middleware"
+	"pharmasense/internal/services/notifications"
 )
 
 type AlertHandler struct {
-	db *pgxpool.Pool
+	db    *pgxpool.Pool
+	email *notifications.EmailService
 }
 
-func NewAlertHandler(db *pgxpool.Pool) *AlertHandler {
-	return &AlertHandler{db: db}
+func NewAlertHandler(db *pgxpool.Pool, email *notifications.EmailService) *AlertHandler {
+	return &AlertHandler{db: db, email: email}
 }
 
 func (h *AlertHandler) List(c *gin.Context) {
@@ -34,7 +38,8 @@ func (h *AlertHandler) List(c *gin.Context) {
 		SELECT ra.id, ib.id as batch_id, ra.risk_level, ra.days_until_expiry,
 		       ra.estimated_loss, ra.suggested_discount_percent,
 		       p.name as product_name, p.category,
-		       ib.batch_number, ib.expiry_date, ib.current_quantity, ib.purchase_price
+		       ib.batch_number, ib.expiry_date, ib.current_quantity, ib.purchase_price,
+		       ib.supplier_email
 		FROM inventory_batches ib
 		JOIN products p ON p.id = ib.product_id
 		LEFT JOIN LATERAL (
@@ -74,6 +79,7 @@ func (h *AlertHandler) List(c *gin.Context) {
 		ExpiryDate      time.Time `json:"expiry_date"`
 		CurrentQty      int       `json:"current_quantity"`
 		PurchasePrice   float64   `json:"purchase_price"`
+		SupplierEmail   *string   `json:"supplier_email"`
 	}
 
 	var alerts []AlertRow
@@ -83,7 +89,7 @@ func (h *AlertHandler) List(c *gin.Context) {
 			&a.AssessmentID, &a.BatchID, &a.RiskLevel, &a.DaysUntilExpiry,
 			&a.EstimatedLoss, &a.SuggestedDisc,
 			&a.ProductName, &a.Category, &a.BatchNumber, &a.ExpiryDate,
-			&a.CurrentQty, &a.PurchasePrice,
+			&a.CurrentQty, &a.PurchasePrice, &a.SupplierEmail,
 		); err != nil {
 			continue
 		}
@@ -96,10 +102,11 @@ func (h *AlertHandler) List(c *gin.Context) {
 }
 
 type alertActionRequest struct {
-	ActionType  string  `json:"action_type"     binding:"required"`
-	Quantity    *int    `json:"quantity"`
-	DiscountPct *int    `json:"discount_percent"`
-	Notes       *string `json:"notes"`
+	ActionType    string  `json:"action_type"     binding:"required"`
+	Quantity      *int    `json:"quantity"`
+	DiscountPct   *int    `json:"discount_percent"`
+	Notes         *string `json:"notes"`
+	SupplierEmail *string `json:"supplier_email"`
 }
 
 func (h *AlertHandler) Action(c *gin.Context) {
@@ -215,12 +222,31 @@ func (h *AlertHandler) Action(c *gin.Context) {
 		}
 
 		refundValue := float64(qty) * purchasePrice
-		c.JSON(http.StatusCreated, gin.H{
+
+		// The return is now committed. Notify the supplier by email as a
+		// best-effort step: a send failure must NOT roll back the return —
+		// we surface it to the client as a warning instead.
+		resp := gin.H{
 			"id":           id,
 			"message":      "action recorded",
 			"refund_value": refundValue,
 			"quantity":     qty,
-		})
+			"email_sent":   false,
+		}
+		supplierEmail := ""
+		if req.SupplierEmail != nil {
+			supplierEmail = strings.TrimSpace(*req.SupplierEmail)
+		}
+		if supplierEmail != "" {
+			if err := h.sendSupplierReturnEmail(c.Request.Context(), batchID, pharmacyID, supplierEmail, qty, refundValue, req.Notes); err != nil {
+				slog.Error("return: supplier email failed", "batch_id", batchID, "err", err)
+				resp["email_error"] = "Return recorded, but the supplier email could not be sent."
+			} else {
+				resp["email_sent"] = true
+			}
+		}
+
+		c.JSON(http.StatusCreated, resp)
 		return
 	}
 
@@ -237,4 +263,34 @@ func (h *AlertHandler) Action(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"id": id, "message": "action recorded"})
+}
+
+// sendSupplierReturnEmail loads the product/batch/pharmacy names for a returned
+// batch and emails the supplier a return notification via Resend.
+func (h *AlertHandler) sendSupplierReturnEmail(ctx context.Context, batchID, pharmacyID uuid.UUID, to string, qty int, refund float64, notes *string) error {
+	var productName, pharmacyName string
+	var batchNumber *string
+	if err := h.db.QueryRow(ctx, `
+		SELECT pr.name, ib.batch_number, ph.name
+		FROM inventory_batches ib
+		JOIN products pr ON pr.id = ib.product_id
+		JOIN pharmacies ph ON ph.id = ib.pharmacy_id
+		WHERE ib.id = $1 AND ib.pharmacy_id = $2
+	`, batchID, pharmacyID).Scan(&productName, &batchNumber, &pharmacyName); err != nil {
+		return fmt.Errorf("load return email data: %w", err)
+	}
+
+	data := notifications.SupplierReturnData{
+		PharmacyName: pharmacyName,
+		ProductName:  productName,
+		Quantity:     qty,
+		RefundValue:  refund,
+	}
+	if batchNumber != nil {
+		data.BatchNumber = *batchNumber
+	}
+	if notes != nil {
+		data.Notes = *notes
+	}
+	return h.email.SendSupplierReturn(ctx, to, data)
 }

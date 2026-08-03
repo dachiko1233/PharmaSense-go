@@ -12,10 +12,11 @@ import { formatCurrency } from "@/lib/utils";
 interface ReturnSupplierModalProps {
   open: boolean;
   onClose: () => void;
-  onConfirm: (quantity: number, notes?: string) => void;
+  onConfirm: (quantity: number, notes?: string, supplierEmail?: string) => void;
   productName: string;
   currentQuantity: number;
   purchasePrice: number;
+  supplierEmail?: string;
   locale: string;
   isLoading?: boolean;
 }
@@ -27,6 +28,7 @@ export function ReturnSupplierModal({
   productName,
   currentQuantity,
   purchasePrice,
+  supplierEmail = "",
   locale,
   isLoading,
 }: ReturnSupplierModalProps) {
@@ -41,8 +43,14 @@ export function ReturnSupplierModal({
           .min(1, "Minimum 1 unit")
           .max(currentQuantity, `Maximum ${currentQuantity} units`),
         notes: z.string().optional(),
+        supplierEmail: z
+          .string()
+          .trim()
+          .email(t("supplierEmailInvalid"))
+          .optional()
+          .or(z.literal("")),
       }),
-    [currentQuantity]
+    [currentQuantity, t]
   );
 
   type FormData = z.infer<typeof schema>;
@@ -55,20 +63,20 @@ export function ReturnSupplierModal({
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { quantity: currentQuantity, notes: "" },
+    defaultValues: { quantity: currentQuantity, notes: "", supplierEmail },
   });
 
   useEffect(() => {
     if (open) {
-      reset({ quantity: currentQuantity, notes: "" });
+      reset({ quantity: currentQuantity, notes: "", supplierEmail });
     }
-  }, [open, currentQuantity, reset]);
+  }, [open, currentQuantity, supplierEmail, reset]);
 
   const quantityValue = watch("quantity");
   const refundEstimate = (Number(quantityValue) || 0) * purchasePrice;
 
   const onSubmit = (data: FormData) => {
-    onConfirm(data.quantity, data.notes || undefined);
+    onConfirm(data.quantity, data.notes || undefined, data.supplierEmail || undefined);
   };
 
   return (
@@ -127,6 +135,23 @@ export function ReturnSupplierModal({
                 </span>
               </div>
             )}
+
+            {/* Supplier email */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                {t("supplierEmailLabel")}
+              </label>
+              <input
+                type="email"
+                placeholder={t("supplierEmailPlaceholder")}
+                {...register("supplierEmail")}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+              {errors.supplierEmail && (
+                <p className="mt-1 text-xs text-red-600">{errors.supplierEmail.message}</p>
+              )}
+              <p className="mt-1 text-xs text-slate-500">{t("supplierEmailHelp")}</p>
+            </div>
 
             {/* Notes */}
             <div>

@@ -100,6 +100,67 @@ func (s *EmailService) SendPasswordReset(ctx context.Context, to, fullName, appU
 	return s.Send(ctx, to, "Reset Your PharmaSense Password", html)
 }
 
+// SupplierReturnData holds the details for a "Return to Supplier" notification.
+type SupplierReturnData struct {
+	PharmacyName string
+	ProductName  string
+	BatchNumber  string
+	Quantity     int
+	RefundValue  float64
+	Notes        string
+}
+
+// SendSupplierReturn notifies a supplier that a pharmacy has returned a
+// medicine. Reuses the shared Resend Send path (mock-safe in dev).
+func (s *EmailService) SendSupplierReturn(ctx context.Context, to string, d SupplierReturnData) error {
+	subject := fmt.Sprintf("Medicine Return: %s from %s", d.ProductName, d.PharmacyName)
+
+	batchRow := ""
+	if d.BatchNumber != "" {
+		batchRow = fmt.Sprintf(`<tr><td style="padding:6px 0;color:#64748b;">Batch code</td><td style="padding:6px 0;text-align:right;font-weight:600;color:#1e293b;">%s</td></tr>`, d.BatchNumber)
+	}
+	notesBlock := ""
+	if strings.TrimSpace(d.Notes) != "" {
+		notesBlock = fmt.Sprintf(`
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-top:16px;">
+        <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.6px;">Reason / Notes</p>
+        <p style="margin:0;font-size:14px;color:#374151;">%s</p>
+      </div>`, d.Notes)
+	}
+
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Medicine Return</title></head>
+<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%%" cellpadding="0" cellspacing="0">
+    <tr><td align="center" style="padding:32px 12px;">
+      <table role="presentation" width="100%%" style="max-width:600px;">
+        <tr><td style="background:#059669;border-radius:12px 12px 0 0;padding:22px 32px;">
+          <p style="margin:0;font-size:20px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">💊 PharmaSense</p>
+          <p style="margin:3px 0 0;font-size:13px;color:#a7f3d0;">Medicine Return Notification</p>
+        </td></tr>
+        <tr><td style="background:#ffffff;padding:28px 32px;">
+          <p style="margin:0 0 16px;font-size:15px;color:#374151;">
+            <strong>%s</strong> has returned a medicine and requests processing of this return.
+          </p>
+          <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;padding:8px 18px;font-size:14px;">
+            <tr><td style="padding:6px 0;color:#64748b;">Medicine</td><td style="padding:6px 0;text-align:right;font-weight:600;color:#1e293b;">%s</td></tr>
+            %s
+            <tr><td style="padding:6px 0;color:#64748b;">Quantity returned</td><td style="padding:6px 0;text-align:right;font-weight:600;color:#1e293b;">%d</td></tr>
+            <tr><td style="padding:6px 0;color:#64748b;">Estimated refund</td><td style="padding:6px 0;text-align:right;font-weight:700;color:#059669;">€%.2f</td></tr>
+          </table>
+          %s
+          <p style="margin:22px 0 0;font-size:13px;color:#94a3b8;">Sent automatically by PharmaSense on behalf of %s.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`, d.PharmacyName, d.ProductName, batchRow, d.Quantity, d.RefundValue, notesBlock, d.PharmacyName)
+
+	return s.Send(ctx, to, subject, html)
+}
+
 func (s *EmailService) SendDailyDigest(ctx context.Context, to string, data DigestData) error {
 	subject, html := buildDigestEmail(data)
 	return s.Send(ctx, to, subject, html)
