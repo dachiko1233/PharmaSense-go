@@ -236,6 +236,10 @@
     "upgradeCanceled": "Checkout canceled",
     "upgradeFailed": "Failed to start checkout",
     "portalFailed": "Failed to open billing portal",
+    "paymentConfirmedTitle": "Payment successful",
+    "paymentConfirmedBody": "Thank you! Your payment went through. Your plan will update here in a moment.",
+    "loadError": "We couldn't load your subscription. Your payment is safe — this is just a display issue.",
+    "retry": "Retry",
     "perMonth": "/mo",
     "plans": {
       "free": {

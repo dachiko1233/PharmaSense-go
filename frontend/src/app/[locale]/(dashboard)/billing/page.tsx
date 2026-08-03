@@ -10,7 +10,7 @@ import { PLAN_ORDER, PLAN_BUTTON, type PlanKey } from "@/lib/plans";
 import PricingCard from "@/components/billing/PricingCard";
 import { Subscription } from "@/types";
 import { toast } from "sonner";
-import { CreditCard } from "lucide-react";
+import { CreditCard, CheckCircle2 } from "lucide-react";
 
 export default function BillingPage() {
   const t = useTranslations("billing");
@@ -19,9 +19,17 @@ export default function BillingPage() {
   const searchParams = useSearchParams();
   const handledRedirect = useRef(false);
 
-  const { data, isLoading } = useQuery<Subscription>({
+  const justPaid = !!searchParams.get("success");
+
+  const { data, isLoading, isError, refetch } = useQuery<Subscription>({
     queryKey: ["billing-subscription"],
     queryFn: () => apiFetch("/billing/subscription"),
+    // After a successful checkout the plan flips via the Dodo webhook, which
+    // may land a beat after the customer is redirected back. Poll briefly so
+    // the confirmed plan appears without a manual refresh; stop once it's no
+    // longer "free" (or react-query gives up on error).
+    refetchInterval: (query) =>
+      justPaid && (query.state.data?.plan ?? "free") === "free" ? 2000 : false,
   });
 
   useEffect(() => {
@@ -57,13 +65,45 @@ export default function BillingPage() {
     onError: (e: Error) => toast.error(e.message || t("upgradeFailed")),
   });
 
+  // Payment confirmation is driven purely by the return-URL param, so the user
+  // always sees a clear success state after paying — even if the subscription
+  // fetch is still loading, errors out, or the webhook hasn't flipped the plan
+  // yet. It never depends on a network call resolving.
+  const successBanner = justPaid ? (
+    <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
+      <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+      <div>
+        <p className="font-semibold text-emerald-900">{t("paymentConfirmedTitle")}</p>
+        <p className="text-sm text-emerald-700 mt-0.5">{t("paymentConfirmedBody")}</p>
+      </div>
+    </div>
+  ) : null;
+
   if (isLoading) {
     return (
-      <div className="p-6 lg:p-8">
+      <div className="p-6 lg:p-8 max-w-4xl">
+        {successBanner}
         <div className="h-8 bg-slate-200 rounded w-48 mb-6 animate-pulse" />
         <div className="rounded-xl border border-slate-200 bg-white p-6 animate-pulse space-y-4">
           <div className="h-4 bg-slate-200 rounded w-3/4" />
           <div className="h-4 bg-slate-200 rounded w-1/2" />
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="p-6 lg:p-8 max-w-4xl">
+        {successBanner}
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 flex flex-col items-start gap-3">
+          <p className="text-sm text-amber-800">{t("loadError")}</p>
+          <button
+            onClick={() => refetch()}
+            className="rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100"
+          >
+            {t("retry")}
+          </button>
         </div>
       </div>
     );
@@ -74,6 +114,7 @@ export default function BillingPage() {
 
   return (
     <div className="p-6 lg:p-8 max-w-4xl">
+      {successBanner}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">{t("title")}</h1>
         <p className="text-sm text-slate-500 mt-1">{t("subtitle")}</p>
