@@ -259,7 +259,7 @@
       },
       "pro": {
         "name": "Pro",
-        "price": "€29",
+        "price": "€00",
         "features": [
           "1 φαρμακείο",
           "Απεριόριστο απόθεμα",
@@ -269,7 +269,7 @@
       },
       "chain": {
         "name": "Αλυσίδα",
-        "price": "€99",
+        "price": "€00",
         "features": [
           "Έως 4 φαρμακεία",
           "Απεριόριστο απόθεμα",
@@ -321,12 +321,32 @@
     "processors": {
       "title": "Τρίτοι Εκτελούντες την Επεξεργασία",
       "intro": "Μοιραζόμαστε δεδομένα μόνο με υπο-εκτελούντες απαραίτητους για τη λειτουργία της υπηρεσίας, δεσμευμένους από συμβάσεις επεξεργασίας δεδομένων.",
-      "headers": { "name": "Πάροχος", "purpose": "Σκοπός", "location": "Τοποθεσία" },
+      "headers": {
+        "name": "Πάροχος",
+        "purpose": "Σκοπός",
+        "location": "Τοποθεσία"
+      },
       "rows": [
-        { "name": "Railway", "purpose": "Φιλοξενία εφαρμογής και βάσης δεδομένων", "location": "ΕΕ (Φρανκφούρτη)" },
-        { "name": "Resend", "purpose": "Αποστολή transactional email", "location": "ΕΕ" },
-        { "name": "Stripe", "purpose": "Επεξεργασία πληρωμών", "location": "ΕΕ / ΗΠΑ (SCCs)" },
-        { "name": "Twilio", "purpose": "Ειδοποιήσεις SMS (προαιρετικά)", "location": "ΕΕ / ΗΠΑ (SCCs)" }
+        {
+          "name": "Railway",
+          "purpose": "Φιλοξενία εφαρμογής και βάσης δεδομένων",
+          "location": "ΕΕ (Φρανκφούρτη)"
+        },
+        {
+          "name": "Resend",
+          "purpose": "Αποστολή transactional email",
+          "location": "ΕΕ"
+        },
+        {
+          "name": "Stripe",
+          "purpose": "Επεξεργασία πληρωμών",
+          "location": "ΕΕ / ΗΠΑ (SCCs)"
+        },
+        {
+          "name": "Twilio",
+          "purpose": "Ειδοποιήσεις SMS (προαιρετικά)",
+          "location": "ΕΕ / ΗΠΑ (SCCs)"
+        }
       ]
     },
     "pharmacyData": {
@@ -487,10 +507,22 @@
     "title": "Πολιτική Cookies",
     "intro": "Το PharmaSense χρησιμοποιεί μόνο απολύτως απαραίτητα cookies για τη λειτουργία της υπηρεσίας. Δεν χρησιμοποιούμε tracking, διαφημιστικά ή analytics cookies.",
     "tableTitle": "Απαραίτητα cookies που χρησιμοποιούμε",
-    "headers": { "name": "Όνομα Cookie", "purpose": "Σκοπός", "duration": "Διάρκεια" },
+    "headers": {
+      "name": "Όνομα Cookie",
+      "purpose": "Σκοπός",
+      "duration": "Διάρκεια"
+    },
     "rows": [
-      { "name": "session_token", "purpose": "Σας κρατά συνδεδεμένους στον λογαριασμό σας", "duration": "24 ώρες" },
-      { "name": "locale", "purpose": "Θυμάται την προτίμηση γλώσσας (EN/EL)", "duration": "1 έτος" }
+      {
+        "name": "session_token",
+        "purpose": "Σας κρατά συνδεδεμένους στον λογαριασμό σας",
+        "duration": "24 ώρες"
+      },
+      {
+        "name": "locale",
+        "purpose": "Θυμάται την προτίμηση γλώσσας (EN/EL)",
+        "duration": "1 έτος"
+      }
     ],
     "doNotUseTitle": "ΔΕΝ χρησιμοποιούμε",
     "doNotUse": [

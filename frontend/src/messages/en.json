@@ -259,7 +259,7 @@
       },
       "pro": {
         "name": "Pro",
-        "price": "€29",
+        "price": "€00",
         "features": [
           "1 pharmacy",
           "Unlimited inventory",
@@ -269,7 +269,7 @@
       },
       "chain": {
         "name": "Chain",
-        "price": "€99",
+        "price": "€00",
         "features": [
           "Up to 4 pharmacies",
           "Unlimited inventory",
@@ -321,12 +321,32 @@
     "processors": {
       "title": "Third-Party Processors",
       "intro": "We share data only with sub-processors necessary to run the service. They are bound by data-processing agreements and appropriate safeguards.",
-      "headers": { "name": "Processor", "purpose": "Purpose", "location": "Location" },
+      "headers": {
+        "name": "Processor",
+        "purpose": "Purpose",
+        "location": "Location"
+      },
       "rows": [
-        { "name": "Railway", "purpose": "Application hosting and database", "location": "EU (Frankfurt)" },
-        { "name": "Resend", "purpose": "Transactional email delivery", "location": "EU" },
-        { "name": "Stripe", "purpose": "Payment processing", "location": "EU / US (SCCs)" },
-        { "name": "Twilio", "purpose": "SMS alerts (optional)", "location": "EU / US (SCCs)" }
+        {
+          "name": "Railway",
+          "purpose": "Application hosting and database",
+          "location": "EU (Frankfurt)"
+        },
+        {
+          "name": "Resend",
+          "purpose": "Transactional email delivery",
+          "location": "EU"
+        },
+        {
+          "name": "Stripe",
+          "purpose": "Payment processing",
+          "location": "EU / US (SCCs)"
+        },
+        {
+          "name": "Twilio",
+          "purpose": "SMS alerts (optional)",
+          "location": "EU / US (SCCs)"
+        }
       ]
     },
     "pharmacyData": {
@@ -487,10 +507,22 @@
     "title": "Cookie Policy",
     "intro": "PharmaSense uses only strictly necessary cookies required to operate the service. We do not use tracking, advertising, or analytics cookies.",
     "tableTitle": "Essential cookies we use",
-    "headers": { "name": "Cookie Name", "purpose": "Purpose", "duration": "Duration" },
+    "headers": {
+      "name": "Cookie Name",
+      "purpose": "Purpose",
+      "duration": "Duration"
+    },
     "rows": [
-      { "name": "session_token", "purpose": "Keeps you logged in to your account", "duration": "24 hours" },
-      { "name": "locale", "purpose": "Remembers your language preference (EN/EL)", "duration": "1 year" }
+      {
+        "name": "session_token",
+        "purpose": "Keeps you logged in to your account",
+        "duration": "24 hours"
+      },
+      {
+        "name": "locale",
+        "purpose": "Remembers your language preference (EN/EL)",
+        "duration": "1 year"
+      }
     ],
     "doNotUseTitle": "We do NOT use",
     "doNotUse": [
