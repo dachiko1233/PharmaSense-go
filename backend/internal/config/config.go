@@ -28,7 +28,9 @@ type Config struct {
 	DodoProductIDChain string
 
 	// TripleCheck signup screening (external anti-abuse API). When
-	// TripleCheckURL is empty, screening is disabled and all signups pass.
+	// TripleCheckAPIKey is empty, screening is disabled and all signups pass
+	// (no network calls). TripleCheckURL is an optional base-URL override;
+	// leave it empty to use TripleCheck's production endpoint.
 	TripleCheckURL       string
 	TripleCheckAPIKey    string
 	TripleCheckTimeoutMS int
@@ -57,7 +59,7 @@ func Load() *Config {
 
 	hours, _ := strconv.Atoi(getEnv("JWT_EXPIRY_HOURS", "24"))
 	disableCron := getEnv("DISABLE_CRON", "false") == "true"
-	tripleCheckTimeout, _ := strconv.Atoi(getEnv("TRIPLECHECK_TIMEOUT_MS", "4000"))
+	tripleCheckTimeout, _ := strconv.Atoi(getEnv("TRIPLECHECK_TIMEOUT_MS", "10000"))
 
 	origin := getEnv("FRONTEND_ORIGIN", "http://localhost:3000")
 	var origins []string
@@ -90,7 +92,7 @@ func Load() *Config {
 		DodoProductIDChain: getEnv("DODO_PRODUCT_ID_CHAIN", ""),
 
 		TripleCheckURL:       getEnv("TRIPLECHECK_URL", ""),
-		TripleCheckAPIKey:    getEnv("TRIPLECHECK_API_KEY", ""),
+		TripleCheckAPIKey:    getEnv("TRIPLECHECK_KEY", ""),
 		TripleCheckTimeoutMS: tripleCheckTimeout,
 
 		DisableCron: disableCron,

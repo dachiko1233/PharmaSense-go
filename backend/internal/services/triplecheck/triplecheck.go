@@ -1,17 +1,19 @@
-// Package triplecheck screens signups against an external anti-abuse API
-// before an account is created. It calls a provider you configure via env
-// (TRIPLECHECK_URL + TRIPLECHECK_API_KEY) and returns an allow/deny decision.
+// Package triplecheck screens signups against the TripleCheck anti-abuse API
+// (https://triplecheck.it.com) before an account is created. Server-side only —
+// the API key must never reach the browser.
 //
 // Design notes:
-//   - The service is optional. When TRIPLECHECK_URL is empty it is treated as
-//     "not configured" and CheckSignup always allows (a no-op), mirroring how
-//     the Dodo billing service behaves when its env is unset. This keeps local
-//     dev and unconfigured deploys working without the external dependency.
-//   - It FAILS OPEN: on a network error, timeout, or non-2xx response the
-//     signup is allowed rather than blocked, so a provider outage can never
-//     take down registration. The event is logged so failures are visible.
+//   - The service is optional. When no API key is configured it is treated as
+//     "not configured" and CheckSignup always allows (a no-op that makes NO
+//     network calls), mirroring how the Dodo billing service behaves when its
+//     env is unset. This keeps local dev and unconfigured deploys working —
+//     and, since each check costs a credit, avoids burning credits in dev.
+//   - It FAILS OPEN: a network error, timeout, or non-200 response makes the
+//     individual check return nil, which is skipped. Only an explicit "invalid"
+//     status denies the signup. "risky"/"unknown" never turn a real customer
+//     away — they are surfaced as flags for review.
 //   - Phone is currently always passed empty — the signup form does not collect
-//     a phone number. The field is kept in the request so wiring a phone in
+//     a phone number, so the phone check is simply not run. Wiring a phone in
 //     later is a form change only, not a contract change.
 package triplecheck
 
@@ -19,110 +21,166 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 )
 
-// Result is the outcome of a signup screen.
+// base is the TripleCheck verify endpoint root. Individual checks are POSTed to
+// base + "/" + kind (e.g. .../verify/email). A Service may override this (for
+// tests/staging); when its override is empty this default is used.
+const base = "https://api.triplecheck.it.com/v1/verify"
+
+// Result is a single TripleCheck verification response.
 type Result struct {
-	Allow  bool           `json:"allow"`
-	Reason string         `json:"reason"`
-	Flags  map[string]any `json:"flags"`
+	Type             string         `json:"type"`
+	Input            string         `json:"input"`
+	Status           string         `json:"status"` // "valid" | "invalid" | "risky" | "unknown"
+	Reason           string         `json:"reason"`
+	Details          map[string]any `json:"details"`
+	LookupID         string         `json:"lookupId"`
+	CreditsRemaining int            `json:"creditsRemaining"`
 }
 
-// request is the JSON body POSTed to the provider.
-type request struct {
-	Email string `json:"email"`
-	Phone string `json:"phone"`
-	IP    string `json:"ip"`
+// Flag is a non-fatal signal worth reviewing (a "risky" check).
+type Flag struct {
+	Type   string `json:"type"`
+	Reason string `json:"reason"`
 }
 
-// Service is a client for the external screening API.
+// SignupCheck is the aggregate decision across the checks that were run.
+type SignupCheck struct {
+	Allow  bool      `json:"allow"`
+	Reason string    `json:"reason"`
+	Flags  []Flag    `json:"flags"`
+	Checks []*Result `json:"checks"`
+}
+
+// Service is a client for the TripleCheck verify API.
 type Service struct {
-	url        string
+	base       string
 	apiKey     string
 	httpClient *http.Client
 }
 
-// New builds a screening client. Pass an empty url to disable screening
-// (CheckSignup then always allows). timeout guards each call; if zero a short
-// default is used so a slow provider cannot stall the signup request.
-func New(url, apiKey string, timeout time.Duration) *Service {
+// New builds a screening client. Pass an empty apiKey to disable screening
+// (CheckSignup then always allows and makes no network calls). baseOverride is
+// optional — leave it empty to use the production base. timeout guards each
+// call; if zero a default is used so a slow provider cannot stall signup.
+func New(baseOverride, apiKey string, timeout time.Duration) *Service {
 	if timeout <= 0 {
-		timeout = 4 * time.Second
+		timeout = 10 * time.Second
 	}
-	if url != "" {
-		slog.Info("triplecheck: signup screening ACTIVE", "url", url, "api_key_set", apiKey != "")
+	b := baseOverride
+	if b == "" {
+		b = base
+	}
+	if apiKey != "" {
+		slog.Info("triplecheck: signup screening ACTIVE", "base", b)
 	} else {
-		slog.Warn("triplecheck: not configured (TRIPLECHECK_URL empty) — signups will not be screened")
+		slog.Warn("triplecheck: not configured (TRIPLECHECK_KEY empty) — signups will not be screened")
 	}
 	return &Service{
-		url:        url,
+		base:       b,
 		apiKey:     apiKey,
 		httpClient: &http.Client{Timeout: timeout},
 	}
 }
 
-// Enabled reports whether a provider URL is configured.
-func (s *Service) Enabled() bool { return s != nil && s.url != "" }
+// Enabled reports whether an API key is configured.
+func (s *Service) Enabled() bool { return s != nil && s.apiKey != "" }
 
-// CheckSignup screens a prospective signup. It never returns an error: when
-// screening is disabled or the provider is unreachable it fails open, returning
-// Allow=true. Callers should deny the signup only when Allow is explicitly
-// false. The returned Reason is a user-safe message when Allow is false.
-func (s *Service) CheckSignup(ctx context.Context, email, phone, ip string) Result {
-	if !s.Enabled() {
-		return Result{Allow: true}
-	}
-
-	body, err := json.Marshal(request{Email: email, Phone: phone, IP: ip})
+// verify POSTs a single check. It returns nil on any error or non-200 response
+// so the caller can fail open. TripleCheck does not bill 4xx/5xx, so a nil here
+// costs nothing.
+func (s *Service) verify(ctx context.Context, kind string, body map[string]string) *Result {
+	payload, err := json.Marshal(body)
 	if err != nil {
-		// Marshalling a fixed struct should never fail; fail open if it does.
-		slog.Error("triplecheck: marshal request failed, allowing signup", "err", err)
-		return Result{Allow: true}
+		return nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.base+"/"+kind, bytes.NewReader(payload))
 	if err != nil {
-		slog.Error("triplecheck: build request failed, allowing signup", "err", err)
-		return Result{Allow: true}
+		return nil
 	}
+	req.Header.Set("Authorization", "Bearer "+s.apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	if s.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+s.apiKey)
-	}
 
-	resp, err := s.httpClient.Do(req)
+	res, err := s.httpClient.Do(req)
 	if err != nil {
-		// Timeout, DNS, connection refused, etc. Fail open.
-		slog.Warn("triplecheck: provider unreachable, allowing signup", "err", err)
-		return Result{Allow: true}
+		slog.Warn("triplecheck: check failed, skipping", "kind", kind, "err", err)
+		return nil
 	}
-	defer resp.Body.Close()
+	defer res.Body.Close()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		slog.Warn("triplecheck: provider returned non-2xx, allowing signup",
-			"status", resp.StatusCode, "body", string(snippet))
-		return Result{Allow: true}
+	if res.StatusCode != http.StatusOK {
+		slog.Warn("triplecheck: check returned non-200, skipping", "kind", kind, "status", res.StatusCode)
+		return nil
 	}
 
 	var out Result
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		slog.Warn("triplecheck: decode response failed, allowing signup", "err", err)
-		return Result{Allow: true}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		slog.Warn("triplecheck: decode failed, skipping", "kind", kind, "err", err)
+		return nil
+	}
+	return &out
+}
+
+// CheckSignup runs the applicable checks in parallel (one credit per check
+// performed) and aggregates them. When screening is disabled it allows without
+// any network calls.
+//
+// Only an "invalid" status denies the signup. "risky" is recorded as a flag and
+// "unknown"/failed checks are ignored — neither is a reason to reject a real
+// customer.
+func (s *Service) CheckSignup(ctx context.Context, email, phone, ip string) SignupCheck {
+	out := SignupCheck{Allow: true, Flags: []Flag{}, Checks: []*Result{}}
+	if !s.Enabled() {
+		return out
+	}
+
+	var wg sync.WaitGroup
+	results := make([]*Result, 3)
+
+	run := func(i int, fn func() *Result) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i] = fn()
+		}()
+	}
+
+	if email != "" {
+		run(0, func() *Result { return s.verify(ctx, "email", map[string]string{"email": email}) })
+	}
+	if phone != "" {
+		run(1, func() *Result { return s.verify(ctx, "phone", map[string]string{"phone": phone}) })
+	}
+	if ip != "" {
+		run(2, func() *Result { return s.verify(ctx, "ip", map[string]string{"ip": ip}) })
+	}
+	wg.Wait()
+
+	for _, r := range results {
+		if r == nil {
+			continue
+		}
+		out.Checks = append(out.Checks, r)
+
+		switch r.Status {
+		case "invalid":
+			if out.Allow {
+				out.Allow = false
+				out.Reason = r.Reason
+			}
+		case "risky":
+			out.Flags = append(out.Flags, Flag{Type: r.Type, Reason: r.Reason})
+		}
 	}
 
 	if !out.Allow && out.Reason == "" {
 		out.Reason = "signup rejected by fraud screening"
 	}
 	return out
-}
-
-// String is a small helper for logging flags compactly.
-func (r Result) String() string {
-	return fmt.Sprintf("allow=%v reason=%q flags=%v", r.Allow, r.Reason, r.Flags)
 }
