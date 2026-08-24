@@ -3,23 +3,45 @@ package handlers
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"pharmasense/internal/middleware"
 	"pharmasense/internal/services"
 	"pharmasense/internal/services/notifications"
+	"pharmasense/internal/services/triplecheck"
 )
 
 type AuthHandler struct {
-	auth  *services.AuthService
-	email *notifications.EmailService
+	auth   *services.AuthService
+	email  *notifications.EmailService
+	screen *triplecheck.Service
 	appURL string
 }
 
-func NewAuthHandler(auth *services.AuthService, email *notifications.EmailService, appURL string) *AuthHandler {
-	return &AuthHandler{auth: auth, email: email, appURL: appURL}
+func NewAuthHandler(auth *services.AuthService, email *notifications.EmailService, screen *triplecheck.Service, appURL string) *AuthHandler {
+	return &AuthHandler{auth: auth, email: email, screen: screen, appURL: appURL}
+}
+
+// clientIP extracts the end user's IP for anti-abuse screening, preferring the
+// proxy headers set in front of the app (Cloudflare, then X-Forwarded-For's
+// first hop) before falling back to the direct connection's address.
+func clientIP(c *gin.Context) string {
+	if ip := strings.TrimSpace(c.GetHeader("CF-Connecting-IP")); ip != "" {
+		return ip
+	}
+	if fwd := c.GetHeader("X-Forwarded-For"); fwd != "" {
+		if first := strings.TrimSpace(strings.Split(fwd, ",")[0]); first != "" {
+			return first
+		}
+	}
+	if host, _, err := net.SplitHostPort(c.Request.RemoteAddr); err == nil {
+		return host
+	}
+	return c.Request.RemoteAddr
 }
 
 type signupRequest struct {
@@ -41,6 +63,15 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 
 	if !req.AcceptTerms {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "you must accept the Privacy Policy and Terms of Service"})
+		return
+	}
+
+	// Anti-abuse screening. Phone is passed empty — the form does not collect
+	// one yet. The screen fails open (allows) when disabled or unreachable, so
+	// this only ever blocks on an explicit Allow=false from the provider.
+	if check := h.screen.CheckSignup(c.Request.Context(), req.Email, "", clientIP(c)); !check.Allow {
+		slog.Info("signup blocked by screening", "email", req.Email, "reason", check.Reason, "flags", check.Flags)
+		c.JSON(http.StatusBadRequest, gin.H{"error": check.Reason})
 		return
 	}
 

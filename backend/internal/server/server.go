@@ -17,6 +17,7 @@ import (
 	"pharmasense/internal/services/billing"
 	"pharmasense/internal/services/cron"
 	"pharmasense/internal/services/notifications"
+	"pharmasense/internal/services/triplecheck"
 )
 
 func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gin.Engine {
@@ -50,6 +51,8 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	// Services
 	authSvc := services.NewAuthService(db, cfg.JWTSecret, cfg.JWTExpiryHours, cfg.AppURL)
 	emailSvc := notifications.NewEmailService(cfg.ResendAPIKey, cfg.ResendFromEmail)
+	screenSvc := triplecheck.New(cfg.TripleCheckURL, cfg.TripleCheckAPIKey,
+		time.Duration(cfg.TripleCheckTimeoutMS)*time.Millisecond)
 
 	// Billing provider: Dodo Payments is the only provider. It's active
 	// whenever product IDs (or an API key) are configured — hosted static
@@ -108,7 +111,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, digestJob ...*cron.DigestJob) *gi
 	}
 
 	// Handlers
-	authH := handlers.NewAuthHandler(authSvc, emailSvc, cfg.AppURL)
+	authH := handlers.NewAuthHandler(authSvc, emailSvc, screenSvc, cfg.AppURL)
 	pharmacyH := handlers.NewPharmacyHandler(db, authSvc)
 	chainH := handlers.NewChainHandler(db)
 	invH := handlers.NewInventoryHandler(db)
