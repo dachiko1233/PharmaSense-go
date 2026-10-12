@@ -1,4 +1,14 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+// Prefer the build-time NEXT_PUBLIC_API_URL when it is actually set. On Railway,
+// Dockerfile builds do not reliably receive service variables as build ARGs, so
+// a bare `?? localhost` fallback bakes an empty string and the browser ends up
+// calling the frontend's own origin (/api/v1 -> 404). Fall back to the deployed
+// backend in production, and localhost only in dev. `||` (not `??`) so an empty
+// string also triggers the fallback.
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (process.env.NODE_ENV === "production"
+    ? "https://backend-production-67dc.up.railway.app"
+    : "http://localhost:3001");
 
 // Hard ceiling on any request. Without this, a connection that is accepted but
 // never answered (a stalled proxy, a half-open socket) leaves fetch pending
